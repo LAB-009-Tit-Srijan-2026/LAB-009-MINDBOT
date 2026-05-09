@@ -6,7 +6,7 @@ Pinecone v9 uses IndexAsyncio for native async operations.
 
 import logging
 from pinecone import Pinecone
-from supabase import create_client, Client as SupabaseClient
+
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 _pinecone_client: Pinecone | None = None
 _pinecone_index = None
 _pinecone_index_async = None
-_supabase_client: SupabaseClient | None = None
 
 
 def get_pinecone_index():
@@ -42,11 +41,33 @@ def get_pinecone_index_async():
     return _pinecone_index_async
 
 
-def get_supabase_client() -> SupabaseClient:
-    """Return a cached Supabase client."""
-    global _supabase_client
-    if _supabase_client is None:
-        settings = get_settings()
-        _supabase_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
-        logger.info("Supabase client connected.")
-    return _supabase_client
+import aiosqlite
+
+DB_PATH = "axion.db"
+
+async def init_db():
+    """Initialize SQLite database tables for custom authentication."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                hashed_password TEXT NOT NULL,
+                is_verified BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS otps (
+                email TEXT PRIMARY KEY,
+                otp_code TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL
+            )
+        ''')
+        await db.commit()
+    logger.info("SQLite database initialized at %s.", DB_PATH)
+
+async def get_db():
+    """Dependency to get a SQLite DB connection."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        yield db

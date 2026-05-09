@@ -8,10 +8,12 @@ Endpoints:
 """
 
 import uuid
+import json
 import logging
 
-from fastapi import APIRouter, UploadFile, File, BackgroundTasks, Query, status
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks, Query, status, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from api.dependencies import get_current_user
 
 from models.schemas import (
     IngestResponse,
@@ -19,7 +21,7 @@ from models.schemas import (
     ChatRequest
 )
 from services.transcription import transcribe_audio, create_semantic_chunks
-from services.vector_store import embed_chunks_and_upsert, search_similar_chunks
+from services.vector_store import embed_chunks_and_upsert, search_similar_chunks, fetch_video_chunks
 from services.llm_stream import stream_chat_response, generate_summary
 from services.youtube import get_youtube_transcript
 
@@ -54,6 +56,7 @@ async def _run_ingestion_pipeline(
     audio_bytes: bytes,
     video_id: str,
     mimetype: str,
+    user_id: str,
 ) -> None:
     """
     Full async pipeline:
@@ -78,7 +81,7 @@ async def _run_ingestion_pipeline(
 
         # Step 3 — Embed and upsert
         _pipeline_status[video_id] = {"status": "embedding", "step": "Embedding & indexing…", "progress": 70}
-        upserted = await embed_chunks_and_upsert(chunks)
+        upserted = await embed_chunks_and_upsert(chunks, user_id)
 
         _pipeline_status[video_id] = {"status": "ready", "step": "Complete", "progress": 100}
         logger.info("[%s] Pipeline complete. %d vectors upserted.", video_id, upserted)
@@ -96,6 +99,7 @@ async def _run_ingestion_pipeline(
 async def ingest_video(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Audio or video file to ingest."),
+    user: dict = Depends(get_current_user)
 ):
     """
     Accept an audio/video upload and kick off the RAG ingestion pipeline
@@ -117,23 +121,28 @@ async def ingest_video(
         audio_bytes,
         video_id,
         mimetype,
+        user.id,
     )
 
     return IngestResponse(video_id=video_id, status="processing")
 
 @router.post("/ingest/youtube", response_model=IngestResponse, status_code=status.HTTP_202_ACCEPTED)
-async def ingest_youtube(request: YouTubeIngestRequest, background_tasks: BackgroundTasks):
+async def ingest_youtube(
+    request: YouTubeIngestRequest, 
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user)
+):
     video_id = str(uuid.uuid4())
     logger.info("[%s] Accepted YouTube URL for ingestion: %s", video_id, request.youtube_url)
     
     _pipeline_status[video_id] = {"status": "queued", "step": "Extracting transcript…", "progress": 10}
     
     # Offload the download and processing pipeline to the background
-    background_tasks.add_task(_run_youtube_pipeline, video_id, request.youtube_url)
+    background_tasks.add_task(_run_youtube_pipeline, video_id, request.youtube_url, user.id)
     
     return IngestResponse(video_id=video_id, status="processing")
 
-async def _run_youtube_pipeline(video_id: str, url: str) -> None:
+async def _run_youtube_pipeline(video_id: str, url: str, user_id: str) -> None:
     try:
         _pipeline_status[video_id] = {"status": "transcribing", "step": "Fetching YouTube captions…", "progress": 25}
         logger.info("[%s] Fetching YouTube transcript for: %s", video_id, url)
@@ -151,7 +160,7 @@ async def _run_youtube_pipeline(video_id: str, url: str) -> None:
         chunks = create_semantic_chunks(utterances, video_id)
 
         _pipeline_status[video_id] = {"status": "embedding", "step": "Embedding & indexing…", "progress": 70}
-        upserted = await embed_chunks_and_upsert(chunks)
+        upserted = await embed_chunks_and_upsert(chunks, user_id)
 
         _pipeline_status[video_id] = {"status": "ready", "step": "Complete", "progress": 100}
         logger.info("[%s] YouTube pipeline complete. %d vectors upserted.", video_id, upserted)
@@ -166,7 +175,10 @@ async def _run_youtube_pipeline(video_id: str, url: str) -> None:
 # ────────────────────────────────────────────────────────────────────
 
 @router.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(
+    request: ChatRequest,
+    user: dict = Depends(get_current_user)
+):
     """
     Retrieve relevant transcript chunks for the user's query, then
     stream a Gemini-powered answer as Server-Sent Events.
@@ -180,15 +192,18 @@ async def chat_stream(request: ChatRequest):
     context_chunks = await search_similar_chunks(
         query=request.query,
         video_id=request.video_id,
+        user_id=user.id,
         top_k=3,
     )
 
     if not context_chunks:
         logger.warning("No matching chunks found for video %s.", request.video_id)
 
+    history_dicts = [{"role": msg.role, "content": msg.content} for msg in request.history]
+
     # Step 2 — Return SSE stream
     return StreamingResponse(
-        stream_chat_response(request.query, context_chunks),
+        stream_chat_response(request.query, context_chunks, history_dicts),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -199,42 +214,42 @@ async def chat_stream(request: ChatRequest):
 
 
 # ────────────────────────────────────────────────────────────────────
-#  GET /api/v1/summary/last_5_mins
+#  GET /api/v1/summary
 # ────────────────────────────────────────────────────────────────────
 
-@router.get("/summary/last_5_mins")
+@router.get("/summary")
 async def get_summary(
     video_id: str = Query(..., description="Target video ID."),
-    current_time: float = Query(..., ge=0, description="Current playback position in seconds."),
+    summary_type: str = Query("topic", description="'topic' or 'last_5_mins'"),
+    current_time: float = Query(0, ge=0, description="Current playback position in seconds."),
+    user: dict = Depends(get_current_user)
 ):
     """
-    Generate a 3-bullet-point summary of the last 5 minutes of a video's
-    transcript.  Currently uses a mock transcript (Supabase fetch TBD).
+    Generate a dynamic summary based on the requested summary_type.
     """
-    start_time = max(0, current_time - 300)
+    logger.info("Summary request — video=%s, type=%s, current_time=%.0f", video_id, summary_type, current_time)
 
-    logger.info(
-        "Summary request — video=%s, range=%.0fs–%.0fs",
-        video_id, start_time, current_time,
-    )
-
-    # Fetch transcript chunks from Pinecone based on time range
     try:
-        # We can't query by time_range in Pinecone without vector, unless we do a metadata filter with a dummy vector.
-        # Alternatively, we just grab all chunks for the video.
-        # For a hackathon MVP, we can just do a similarity search with a generic summary prompt,
-        # or we fetch by ID prefix if we had stored them that way. 
-        # Since we use uuid for chunk IDs, let's just do a vector search with a generic query to get top 10 chunks!
-        context_chunks = await search_similar_chunks(
-            query="Summarize the key points discussed in this video.",
-            video_id=video_id,
-            top_k=10,
-        )
+        if summary_type == "last_5_mins":
+            start_time = max(0, current_time - 300)
+            context_chunks = await fetch_video_chunks(
+                video_id=video_id,
+                user_id=user.id,
+                limit=15,
+                time_range=(start_time, current_time)
+            )
+        else:
+            # Topic Overview: generic fetch to get a broad sample of the video
+            context_chunks = await fetch_video_chunks(
+                video_id=video_id,
+                user_id=user.id,
+                limit=20
+            )
         
         if not context_chunks:
             transcript_text = "No transcript available for this video."
         else:
-            # Sort chunks by start_time
+            # Sort chunks chronologically
             context_chunks.sort(key=lambda x: x["start_time"])
             transcript_text = "\n".join([c["text"] for c in context_chunks])
             
@@ -242,13 +257,64 @@ async def get_summary(
         logger.error("Failed to fetch summary chunks: %s", e)
         transcript_text = "Error retrieving transcript."
 
-    summary = await generate_summary(transcript_text)
+    summary = await generate_summary(transcript_text, summary_type)
 
     return {
         "video_id": video_id,
+        "summary_type": summary_type,
         "time_range": {
-            "start": start_time,
+            "start": max(0, current_time - 300) if summary_type == "last_5_mins" else 0,
             "end": current_time,
         },
-        "summary": summary,
+        "content": summary
     }
+
+# ────────────────────────────────────────────────────────────────────
+#  GET /api/v1/study-material
+# ────────────────────────────────────────────────────────────────────
+
+from services.llm_structured import generate_structured_content
+
+@router.get("/study-material")
+async def get_study_material(
+    video_id: str = Query(..., description="Target video ID."),
+    material_type: str = Query(..., description="'notes', 'quiz', 'flashcards', or 'mock_test'"),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Generate structured study material from the video transcript.
+    """
+    logger.info("Study material request — video=%s, type=%s", video_id, material_type)
+
+    try:
+        # Fetch chunks without calling Voyage AI (to avoid rate limits)
+        context_chunks = await fetch_video_chunks(
+            video_id=video_id,
+            user_id=user.id,
+            limit=50
+        )
+        
+        if not context_chunks:
+            raise HTTPException(status_code=404, detail="No transcript available for this video.")
+            
+        # Sort chronologically
+        context_chunks.sort(key=lambda x: x["start_time"])
+        transcript_text = "\n".join([c["text"] for c in context_chunks])
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to fetch chunks for study material: %s", e)
+        raise HTTPException(status_code=500, detail="Error retrieving transcript context.")
+
+    try:
+        # Generate structured JSON
+        json_str = await generate_structured_content(transcript_text, material_type)
+        # Parse it to ensure it's valid JSON before returning
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        logger.error("LLM failed to return valid JSON: %s\nOutput: %s", e, json_str)
+        raise HTTPException(status_code=500, detail="Failed to generate valid structured content.")
+    except Exception as e:
+        logger.error("Failed to generate study material: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to generate study material.")

@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     # ── Gemini (Generation LLM) ──
     GEMINI_API_KEY: str
 
+    # ── Custom Auth SMTP & Security ──
+    SMTP_SERVER: str
+    SMTP_PORT: int
+    SMTP_USERNAME: str
+    SMTP_PASSWORD: str
+    JWT_SECRET: str
+
 
 @lru_cache()
 def get_settings() -> Settings:

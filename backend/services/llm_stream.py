@@ -45,6 +45,7 @@ def _configure_genai() -> None:
 async def stream_chat_response(
     query: str,
     context_chunks: list[dict],
+    history: list[dict] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Async generator that yields SSE-formatted tokens from Gemini Flash-Lite.
@@ -74,6 +75,15 @@ async def stream_chat_response(
 
     context_block = "\n\n---\n\n".join(context_lines)
 
+    # ── Format history for Gemini ──
+    gemini_history = []
+    if history:
+        for msg in history:
+            role = "user" if msg["role"] == "user" else "model"
+            gemini_history.append({"role": role, "parts": [msg["content"]]})
+
+    chat = model.start_chat(history=gemini_history)
+
     prompt = (
         f"TRANSCRIPT CONTEXT:\n{context_block}\n\n"
         f"STUDENT QUESTION: {query}\n\n"
@@ -81,9 +91,9 @@ async def stream_chat_response(
         "Reference timestamps using [TIMESTAMP:X] format where X is the start_time in seconds."
     )
 
-    logger.info("Streaming Gemini response for query: '%s'", query[:80])
+    logger.info("Streaming Gemini response for query: '%s' with %d history msgs", query[:80], len(gemini_history))
 
-    response = await model.generate_content_async(prompt, stream=True)
+    response = await chat.send_message_async(prompt, stream=True)
 
     async for chunk in response:
         if chunk.text:
@@ -97,21 +107,29 @@ async def stream_chat_response(
 #  2.  Summary Generation  (non-streaming)
 # ────────────────────────────────────────────────────────────────────
 
-async def generate_summary(transcript_text: str) -> str:
+async def generate_summary(transcript_text: str, summary_type: str = "topic") -> str:
     """
-    Send transcript text to Gemini and return a 3-bullet-point summary.
+    Send transcript text to Gemini and return a formatted summary based on the type.
     """
     _configure_genai()
 
     model = genai.GenerativeModel(model_name=_MODEL_NAME)
 
-    prompt = (
-        "Summarize the following lecture transcript excerpt into "
-        "exactly 3 concise bullet points. Each bullet should capture "
-        "a distinct key concept or takeaway.\n\n"
-        f"TRANSCRIPT:\n{transcript_text}\n\n"
-        "FORMAT:\n• Point 1\n• Point 2\n• Point 3"
-    )
+    if summary_type == "last_5_mins":
+        prompt = (
+            "Summarize the following 5-minute lecture transcript excerpt into "
+            "exactly 3 concise bullet points. Each bullet should capture "
+            "a distinct key concept or takeaway.\n\n"
+            f"TRANSCRIPT:\n{transcript_text}\n\n"
+            "FORMAT:\n• Point 1\n• Point 2\n• Point 3"
+        )
+    else:
+        prompt = (
+            "Analyze the following video transcript and identify the main topics covered. "
+            "Return exactly 3 to 5 concise bullet points detailing the core subjects discussed.\n\n"
+            f"TRANSCRIPT:\n{transcript_text}\n\n"
+            "FORMAT:\n• Topic 1\n• Topic 2\n• Topic 3"
+        )
 
     logger.info("Generating 3-bullet summary…")
     response = await model.generate_content_async(prompt)

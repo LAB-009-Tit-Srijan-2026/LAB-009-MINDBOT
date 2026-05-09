@@ -9,7 +9,19 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <div className="app-wrapper">
+          {/* ── CINEMATIC BACKGROUND VIDEO ── */}
+          <video autoPlay loop muted playsInline className="background-video">
+            <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4" />
+          </video>
+          <div className="video-overlay"></div>
+          
+          <div className="app-container">
+            {children}
+          </div>
+        </div>
+      </body>
     </html>
   );
 }

@@ -20,17 +20,23 @@ class YouTubeIngestRequest(BaseModel):
     youtube_url: str = Field(..., description="The YouTube URL to ingest.")
 
 
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="'user' or 'assistant'")
+    content: str = Field(..., description="Message content")
+
 class ChatRequest(BaseModel):
     """Body for POST /api/v1/chat/stream."""
     session_id: str = Field(..., description="Client-side session identifier.")
     video_id: str = Field(..., description="Target video to query against.")
     query: str = Field(..., min_length=1, description="The student's question.")
+    history: list[ChatMessage] = Field(default=[], description="Previous conversation messages in this session.")
 
 
 class SummaryRequest(BaseModel):
-    """Query params model for GET /api/v1/summary/last_5_mins."""
+    """Query params model for GET /api/v1/summary."""
     video_id: str = Field(..., description="Target video ID.")
-    current_time: float = Field(..., ge=0, description="Current playback position in seconds.")
+    summary_type: str = Field("topic", description="'topic' or 'last_5_mins'")
+    current_time: float = Field(0, ge=0, description="Current playback position in seconds.")
 
 
 # ── Internal Data Models ──

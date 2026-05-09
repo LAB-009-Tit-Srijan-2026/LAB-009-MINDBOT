@@ -35,10 +35,10 @@ def _adjust_dimension(vector: list[float], target_dim: int = 2048) -> list[float
 #  1.  Embed + Upsert  (Ingestion — voyage-4-large)
 # ────────────────────────────────────────────────────────────────────
 
-async def embed_chunks_and_upsert(chunks: list[dict]) -> int:
+async def embed_chunks_and_upsert(chunks: list[dict], user_id: str) -> int:
     """
     Embed transcript chunks with voyage-4-large (document mode) and
-    upsert the resulting vectors into Pinecone with temporal metadata.
+    upsert the resulting vectors into Pinecone with temporal metadata and user_id.
 
     Handles Voyage rate limits by batching embeddings with delays.
     Returns the number of vectors upserted.
@@ -94,6 +94,7 @@ async def embed_chunks_and_upsert(chunks: list[dict]) -> int:
                 "metadata": {
                     "text": chunk["text"],
                     "video_id": chunk["video_id"],
+                    "user_id": user_id,
                     "start_time": chunk["start_time"],
                     "end_time": chunk["end_time"],
                 },
@@ -121,11 +122,13 @@ async def embed_chunks_and_upsert(chunks: list[dict]) -> int:
 async def search_similar_chunks(
     query: str,
     video_id: str,
+    user_id: str,
     top_k: int = 3,
+    time_range: tuple[float, float] = None,
 ) -> list[dict]:
     """
     Embed a user query with voyage-4-lite (query mode), then search
-    Pinecone filtered by video_id.  Returns the top-k matching chunks
+    Pinecone filtered by video_id and user_id. Returns the top-k matching chunks
     with text, timestamps, and similarity scores.
     """
     settings = get_settings()
@@ -140,12 +143,21 @@ async def search_similar_chunks(
     )
     query_vector = _adjust_dimension(embedding_response.embeddings[0], target_dim=2048)
 
+    pinecone_filter = {
+        "video_id": {"$eq": video_id},
+        "user_id": {"$eq": user_id}
+    }
+    if time_range:
+        start_t, end_t = time_range
+        # Filter chunks that overlap with the time range.
+        pinecone_filter["start_time"] = {"$gte": start_t, "$lte": end_t}
+
     # Search Pinecone using native async index
     index = get_pinecone_index_async()
     results = await index.query(
         vector=query_vector,
         top_k=top_k,
-        filter={"video_id": {"$eq": video_id}},
+        filter=pinecone_filter,
         include_metadata=True,
     )
 
@@ -164,4 +176,48 @@ async def search_similar_chunks(
         len(matched_chunks),
         matched_chunks[0]["score"] if matched_chunks else 0.0,
     )
+    return matched_chunks
+
+async def fetch_video_chunks(
+    video_id: str, 
+    user_id: str, 
+    limit: int = 50,
+    time_range: tuple[float, float] = None
+) -> list[dict]:
+    """
+    Fetch chunks for a specific video directly from Pinecone using a filter,
+    bypassing the Voyage AI embedding step to avoid rate limit issues.
+    Uses a dummy zero-vector for the query.
+    """
+    index = get_pinecone_index_async()
+    
+    # We use a dummy vector because we only care about the filter results
+    dummy_vector = [0.0] * 2048
+    
+    pinecone_filter = {
+        "video_id": {"$eq": video_id},
+        "user_id": {"$eq": user_id}
+    }
+    
+    if time_range:
+        start_t, end_t = time_range
+        pinecone_filter["start_time"] = {"$gte": start_t, "$lte": end_t}
+    
+    results = await index.query(
+        vector=dummy_vector,
+        top_k=limit,
+        filter=pinecone_filter,
+        include_metadata=True,
+    )
+    
+    matched_chunks = [
+        {
+            "text": match["metadata"]["text"],
+            "start_time": match["metadata"]["start_time"],
+            "end_time": match["metadata"]["end_time"],
+        }
+        for match in results.get("matches", [])
+    ]
+    
+    logger.info("Fetched %d raw chunks for video %s without embedding.", len(matched_chunks), video_id)
     return matched_chunks

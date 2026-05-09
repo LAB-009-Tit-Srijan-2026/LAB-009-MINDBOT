@@ -1,7 +1,12 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { UploadCloud, CheckCircle, Loader2, Send, PlayCircle, Link as LinkIcon, Sparkles } from 'lucide-react';
+import { UploadCloud, CheckCircle, Loader2, Send, PlayCircle, Link as LinkIcon, Sparkles, BookOpen, Brain, CreditCard, ClipboardCheck, MessageSquare } from 'lucide-react';
+import NotesViewer from './components/StudyTools/NotesViewer';
+import FlashcardDeck from './components/StudyTools/FlashcardDeck';
+import QuizEngine from './components/StudyTools/QuizEngine';
+import MockTest from './components/StudyTools/MockTest';
+import { useRouter } from 'next/navigation';
 
 const API_BASE = "http://localhost:8000/api/v1";
 
@@ -33,18 +38,75 @@ export default function VideoCompanionDashboard() {
   const [pipelineInfo, setPipelineInfo] = useState<PipelineStatus>({ status: '', step: '', progress: 0 });
   
   const [summary, setSummary] = useState<string[]>([]);
+  const [summaryType, setSummaryType] = useState<'topic' | 'last_5_mins'>('topic');
+  const [isSummarizing, setIsSummarizing] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [query, setQuery] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [activeTab, setActiveTab] = useState<'chat' | 'notes' | 'quiz' | 'flashcards' | 'mock_test'>('chat');
 
   const mediaRef = useRef<HTMLAudioElement | HTMLVideoElement | null>(null);
   const ytIframeRef = useRef<HTMLIFrameElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const router = useRouter();
+
+  useEffect(() => {
+    const token = localStorage.getItem('axion_jwt');
+    if (!token) {
+      router.push('/login');
+    }
+  }, [router]);
+
+  const getAuthHeaders = useCallback(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('axion_jwt') : null;
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+  }, []);
+
   // Auto-scroll chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // ── Fetch Summary ──
+  const fetchSummary = useCallback(async (type: 'topic' | 'last_5_mins', currentVideoId: string) => {
+    setIsSummarizing(true);
+    setSummaryType(type);
+    
+    let currentTime = 0;
+    if (type === 'last_5_mins') {
+      if (ytIframeRef.current) {
+        // Since we are using postMessage to control YT, we can't easily synchronously get time 
+        // without a listener setup. For MVP, if mediaRef is available we use it. 
+        // Otherwise, we default to 300 to simulate.
+        currentTime = mediaRef.current ? mediaRef.current.currentTime : 300;
+      } else if (mediaRef.current) {
+        currentTime = mediaRef.current.currentTime;
+      }
+    }
+
+    try {
+      const summaryRes = await fetch(`${API_BASE}/summary?video_id=${currentVideoId}&summary_type=${type}&current_time=${currentTime}`, {
+        headers: getAuthHeaders()
+      });
+      const summaryData = await summaryRes.json();
+      const summaryText = summaryData.summary || "";
+      if (summaryText && !summaryText.toLowerCase().includes("please provide")) {
+        const bullets = summaryText
+          .split('\n')
+          .map((line: string) => line.replace(/^[•\-\*]\s*/, '').trim())
+          .filter(Boolean);
+        setSummary(bullets);
+      }
+    } catch (e) {
+      console.error("Failed to fetch summary", e);
+    } finally {
+      setIsSummarizing(false);
+    }
+  }, []);
 
   // ── Poll pipeline status from backend ──
   const pollStatus = useCallback(async (id: string) => {
@@ -55,24 +117,15 @@ export default function VideoCompanionDashboard() {
     for (let attempt = 0; attempt < 120; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 3000));
       try {
-        const res = await fetch(`${API_BASE}/status/${id}`);
+        const res = await fetch(`${API_BASE}/status/${id}`, {
+          headers: getAuthHeaders()
+        });
         const data: PipelineStatus = await res.json();
         setPipelineInfo(data);
 
         if (data.status === 'ready') {
-          // Fetch summary now that pipeline is done
-          try {
-            const summaryRes = await fetch(`${API_BASE}/summary/last_5_mins?video_id=${id}&current_time=0`);
-            const summaryData = await summaryRes.json();
-            const summaryText = summaryData.summary || "";
-            if (summaryText && !summaryText.toLowerCase().includes("please provide")) {
-              const bullets = summaryText
-                .split('\n')
-                .map((line: string) => line.replace(/^[•\-\*]\s*/, '').trim())
-                .filter(Boolean);
-              setSummary(bullets);
-            }
-          } catch { /* summary is optional */ }
+          // Fetch initial topic summary
+          await fetchSummary('topic', id);
 
           setStatus('ready');
           setMessages([{
@@ -113,8 +166,12 @@ export default function VideoCompanionDashboard() {
     formData.append('file', selected);
 
     try {
+      const authHeaders = getAuthHeaders();
+      delete (authHeaders as any)['Content-Type'];
+
       const res = await fetch(`${API_BASE}/ingest`, {
         method: 'POST',
+        headers: authHeaders,
         body: formData,
       });
       const data = await res.json();
@@ -136,7 +193,7 @@ export default function VideoCompanionDashboard() {
     try {
       const res = await fetch(`${API_BASE}/ingest/youtube`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ youtube_url: ytUrl }),
       });
       const data = await res.json();
@@ -162,6 +219,11 @@ export default function VideoCompanionDashboard() {
     if (!query.trim() || !videoId || isStreaming) return;
 
     const userMessage: Message = { role: 'user', content: query };
+    
+    // Capture current history BEFORE we append the new user message to state,
+    // so we can send it to the backend as context. We ignore the initial greeting.
+    const historyToSend = messages.filter(m => m.content !== "I've analyzed the media. Feel free to ask me any questions about it!");
+
     setMessages(prev => [...prev, userMessage, { role: 'assistant', content: "" }]);
     setQuery("");
     setIsStreaming(true);
@@ -169,11 +231,12 @@ export default function VideoCompanionDashboard() {
     try {
       const response = await fetch(`${API_BASE}/chat/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           session_id: "demo-session",
           video_id: videoId,
-          query: userMessage.content
+          query: userMessage.content,
+          history: historyToSend
         })
       });
 
@@ -260,191 +323,293 @@ export default function VideoCompanionDashboard() {
   const ytId = activeYtUrl ? extractYouTubeId(activeYtUrl) : null;
 
   return (
-    <main className="app-container">
-      {/* ── LEFT PANEL (Ingestion & Summary) ── */}
-      <section className="panel-left">
-        <h1>Axion</h1>
-        <p className="subtitle">LMS Video Companion RAG Dashboard</p>
+    <div className="app-wrapper">
+      {/* ── CINEMATIC BACKGROUND VIDEO ── */}
+      <video autoPlay loop muted playsInline className="background-video">
+        <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4" />
+      </video>
+      <div className="video-overlay"></div>
 
-        {/* Upload Zone */}
-        {!file && !activeYtUrl && (
-          <div style={{ marginBottom: '2rem' }}>
-            <label className={`upload-zone ${status === 'uploading' ? 'dragging' : ''}`} style={{ display: 'block', marginBottom: '1rem' }}>
-              <UploadCloud className="upload-icon" style={{ margin: '0 auto 1rem' }} />
-              <p className="upload-text">Drag & drop your media</p>
-              <p className="upload-subtext">Supports .mp4, .mp3, .wav files</p>
-              <input 
-                type="file" 
-                className="file-input" 
-                accept="audio/*,video/*"
-                onChange={handleFileChange}
-                disabled={status !== 'idle'}
-              />
-            </label>
-
-            <form onSubmit={handleYoutubeSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
-              <div style={{ flex: 1, position: 'relative' }}>
-                <LinkIcon size={18} style={{ position: 'absolute', left: 12, top: 10, color: 'var(--text-muted)' }} />
-                <input 
-                  type="text" 
-                  placeholder="Or paste a YouTube URL..." 
-                  value={ytUrl}
-                  onChange={(e) => setYtUrl(e.target.value)}
-                  disabled={status !== 'idle'}
-                  style={{
-                    width: '100%',
-                    padding: '0.6rem 1rem 0.6rem 2.5rem',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-bright)',
-                    background: 'var(--bg-base)',
-                    color: 'var(--text-primary)'
-                  }}
-                />
-              </div>
-              <button 
-                type="submit" 
-                disabled={!ytUrl.trim() || status !== 'idle'}
-                style={{
-                  padding: '0 1.2rem',
-                  borderRadius: '8px',
-                  background: 'var(--accent-base)',
-                  color: '#fff',
-                  border: 'none',
-                  cursor: !ytUrl.trim() || status !== 'idle' ? 'not-allowed' : 'pointer',
-                  opacity: !ytUrl.trim() || status !== 'idle' ? 0.5 : 1
-                }}
-              >
-                Ingest
-              </button>
-            </form>
+      <div className="app-container">
+        <header className="bento-panel top-navbar">
+          <div className="nav-brand">
+            <Sparkles className="nav-brand-icon" size={24} />
+            Axion
           </div>
-        )}
-
-        {/* ── Custom Video Player with Processing Overlay ── */}
-        {(activeYtUrl || fileUrl) && (
-          <div className="custom-player-wrapper">
-            {/* The actual player (YT iframe or HTML5 video/audio) */}
-            <div className={`custom-player ${isProcessing ? 'player-dimmed' : ''}`}>
-              {ytId ? (
-                <iframe
-                  ref={ytIframeRef}
-                  width="100%"
-                  height="100%"
-                  src={`https://www.youtube.com/embed/${ytId}?enablejsapi=1&rel=0&modestbranding=1`}
-                  title="YouTube video player"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  style={{ border: 'none', display: 'block' }}
-                />
-              ) : fileUrl && file?.type.startsWith('video/') ? (
-                <video ref={mediaRef as React.RefObject<HTMLVideoElement>} src={fileUrl} controls />
-              ) : fileUrl ? (
-                <audio ref={mediaRef as React.RefObject<HTMLAudioElement>} src={fileUrl} controls />
-              ) : null}
-            </div>
-
-            {/* ── Processing Overlay ── */}
-            {isProcessing && (
-              <div className="player-processing-overlay">
-                <div className="processing-content">
-                  <div className="processing-spinner">
-                    <Sparkles size={28} className="sparkle-icon" />
-                  </div>
-                  <p className="processing-step">{pipelineInfo.step || 'Initializing…'}</p>
-                  <div className="processing-bar-track">
-                    <div 
-                      className="processing-bar-fill"
-                      style={{ width: `${pipelineInfo.progress || 5}%` }}
-                    />
-                  </div>
-                  <p className="processing-percent">{pipelineInfo.progress || 5}%</p>
-                </div>
-              </div>
-            )}
-
-            {/* Ready badge */}
-            {status === 'ready' && (
-              <div className="player-ready-badge">
-                <CheckCircle size={14} /> Ready
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Summary Card */}
-        {summary.length > 0 && (
-          <div className="summary-card">
-            <h2 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Smart Summary</h2>
-            <ul className="summary-list">
-              {summary.map((pt, i) => (
-                <li key={i}>{pt}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      {/* ── RIGHT PANEL (Chat Interface) ── */}
-      <section className="panel-right">
-        <header className="chat-header">
-          <div style={{ background: 'var(--accent-base)', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#fff', fontSize: 18 }}>✦</span>
-          </div>
-          <div>
-            <h2 style={{ fontSize: '1rem', margin: 0 }}>Axion Assistant</h2>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Powered by Gemini Flash-Lite</p>
+          <div className="nav-status" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span>LMS Video Companion</span>
+            <span style={{ color: 'var(--border-color)' }}>|</span>
+            <span style={{ color: status === 'ready' ? '#10B981' : 'var(--text-light)' }}>
+              {status === 'idle' ? 'Ready' : status === 'ready' ? 'Online' : 'Processing…'}
+            </span>
+            <span style={{ color: 'var(--border-color)' }}>|</span>
+            <button 
+              onClick={() => {
+                localStorage.removeItem("axion_jwt");
+                router.push('/login');
+              }} 
+              className="pill-tab"
+              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+            >
+              Sign Out
+            </button>
           </div>
         </header>
 
-        <div className="chat-messages">
-          {messages.length === 0 && (
-            <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <p>Upload a file or paste a YouTube URL to start chatting.</p>
+      <main className="main-content">
+        {!file && !activeYtUrl ? (
+          /* ── EMPTY STATE / HERO ── */
+          <div className="bento-panel hero-panel">
+            <div className="hero-card">
+              <h1>Start Building.</h1>
+              <p className="subtitle">Upload a lecture or paste a YouTube link to generate your interactive companion.</p>
+              
+              <label className={`upload-zone ${status === 'uploading' ? 'dragging' : ''}`} style={{ display: 'block', marginBottom: '2rem' }}>
+                <UploadCloud size={32} style={{ margin: '0 auto 1rem', color: 'var(--text-main)' }} />
+                <p className="upload-text">Drag & drop your media</p>
+                <p className="upload-subtext">Supports .mp4, .mp3, .wav files</p>
+                <input 
+                  type="file" 
+                  className="file-input" 
+                  accept="audio/*,video/*"
+                  onChange={handleFileChange}
+                  disabled={status !== 'idle'}
+                />
+              </label>
+
+              <form onSubmit={handleYoutubeSubmit} style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <LinkIcon size={20} style={{ position: 'absolute', left: 20, top: 16, color: 'var(--text-muted)' }} />
+                  <input 
+                    type="text" 
+                    className="pill-input"
+                    placeholder="Paste a YouTube URL..." 
+                    value={ytUrl}
+                    onChange={(e) => setYtUrl(e.target.value)}
+                    disabled={status !== 'idle'}
+                  />
+                </div>
+                  <button 
+                    type="submit" 
+                    className="pill-btn"
+                    disabled={!ytUrl.trim() || status !== 'idle'}
+                  >
+                    Ingest <span style={{ color: 'var(--text-muted)' }}>→</span>
+                  </button>
+              </form>
             </div>
-          )}
-          
-          {messages.map((msg, i) => (
-            <div key={i} className={`message ${msg.role}`}>
-              <div className="message-bubble">
-                {msg.role === 'assistant' ? (
-                  msg.content === "" && isStreaming ? (
-                    <div className="typing-indicator">
-                      <div className="typing-dot"></div>
-                      <div className="typing-dot"></div>
-                      <div className="typing-dot"></div>
+          </div>
+        ) : (
+          /* ── ACTIVE WORKSPACE ── */
+          <>
+            {/* THEATER VIEW (Left/Center) */}
+            <div className="bento-panel theater-panel">
+              
+              {/* Status Banner (if processing) */}
+              {status !== 'idle' && status !== 'ready' && (
+                <div style={{ padding: '16px', background: 'var(--panel-alt)', borderRadius: '12px', display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '24px' }}>
+                  <Loader2 className="processing-spinner" style={{ margin: 0 }} size={20} />
+                  <div>
+                    <p style={{ fontWeight: 700, fontSize: '0.95rem' }}>Processing Media...</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      {pipelineInfo.step || 'Initializing pipeline...'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Video Player */}
+              <div className="custom-player-wrapper">
+                <div className={`custom-player ${isProcessing ? 'player-dimmed' : ''}`}>
+                  {ytId ? (
+                    <iframe
+                      ref={ytIframeRef}
+                      width="100%"
+                      height="100%"
+                      src={`https://www.youtube.com/embed/${ytId}?enablejsapi=1&rel=0&modestbranding=1`}
+                      title="YouTube video player"
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      style={{ border: 'none', display: 'block' }}
+                    />
+                  ) : fileUrl && file?.type.startsWith('video/') ? (
+                    <video ref={mediaRef as React.RefObject<HTMLVideoElement>} src={fileUrl} controls style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  ) : fileUrl ? (
+                    <audio ref={mediaRef as React.RefObject<HTMLAudioElement>} src={fileUrl} controls style={{ width: '100%', marginTop: 'auto' }} />
+                  ) : null}
+                </div>
+
+                {/* Processing Overlay */}
+                {isProcessing && (
+                  <div className="player-processing-overlay">
+                    <div className="processing-content">
+                      <div className="processing-spinner">
+                        <Sparkles size={32} />
+                      </div>
+                      <p className="processing-step">{pipelineInfo.step || 'Initializing…'}</p>
+                      <div className="processing-bar-track">
+                        <div 
+                          className="processing-bar-fill"
+                          style={{ width: `${pipelineInfo.progress || 5}%` }}
+                        />
+                      </div>
+                      <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>{pipelineInfo.progress || 5}%</p>
                     </div>
-                  ) : (
-                    renderMessageContent(msg.content)
-                  )
-                ) : (
-                  <p>{msg.content}</p>
+                  </div>
                 )}
               </div>
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
 
-        <div className="chat-input-wrapper">
-          <form className="chat-input-box" onSubmit={handleChat}>
-            <input 
-              type="text" 
-              placeholder={status === 'ready' ? "Ask about the video..." : "Waiting for media..."}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              disabled={status !== 'ready' || isStreaming}
-            />
-            <button 
-              type="submit" 
-              className="send-button"
-              disabled={!query.trim() || status !== 'ready' || isStreaming}
-            >
-              <Send size={16} />
-            </button>
-          </form>
-        </div>
-      </section>
-    </main>
+              {/* Summary Card */}
+              {summary.length > 0 && (
+                <div className="summary-card">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <h2 style={{ fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      Smart Summary
+                    </h2>
+                    
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button 
+                        className={`pill-tab ${summaryType === 'topic' ? 'active' : ''}`}
+                        onClick={() => videoId && fetchSummary('topic', videoId)}
+                        disabled={isSummarizing}
+                      >
+                        Topic Overview
+                      </button>
+                      <button 
+                        className={`pill-tab ${summaryType === 'last_5_mins' ? 'active' : ''}`}
+                        onClick={() => videoId && fetchSummary('last_5_mins', videoId)}
+                        disabled={isSummarizing}
+                      >
+                        Last 5 Mins
+                      </button>
+                    </div>
+                  </div>
+
+                  {isSummarizing ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem', padding: '1rem' }}>
+                      <Loader2 size={16} className="processing-spinner" style={{ margin: 0 }} /> Generating summary...
+                    </div>
+                  ) : (
+                    <ul className="summary-list">
+                      {summary.map((pt, i) => (
+                        <li key={i}>{pt}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* CHAT SIDEBAR (Right) */}
+            <div className="bento-panel sidebar-panel">
+              <nav className="tab-nav">
+                <button 
+                  className={`tab-btn ${activeTab === 'chat' ? 'active' : ''}`} 
+                  onClick={() => setActiveTab('chat')}
+                  title="Chat"
+                >
+                  <MessageSquare size={18} />
+                </button>
+                <button 
+                  className={`tab-btn ${activeTab === 'notes' ? 'active' : ''}`} 
+                  onClick={() => setActiveTab('notes')}
+                  title="Notes"
+                >
+                  <BookOpen size={18} />
+                </button>
+                <button 
+                  className={`tab-btn ${activeTab === 'flashcards' ? 'active' : ''}`} 
+                  onClick={() => setActiveTab('flashcards')}
+                  title="Flashcards"
+                >
+                  <CreditCard size={18} />
+                </button>
+                <button 
+                  className={`tab-btn ${activeTab === 'quiz' ? 'active' : ''}`} 
+                  onClick={() => setActiveTab('quiz')}
+                  title="Quiz"
+                >
+                  <Brain size={18} />
+                </button>
+                <button 
+                  className={`tab-btn ${activeTab === 'mock_test' ? 'active' : ''}`} 
+                  onClick={() => setActiveTab('mock_test')}
+                  title="Mock Test"
+                >
+                  <ClipboardCheck size={18} />
+                </button>
+              </nav>
+
+              {activeTab === 'chat' ? (
+                <>
+                  <header className="chat-header">
+                    <div className="chat-header-icon">
+                      <Sparkles size={16} />
+                    </div>
+                    <div>
+                      <h2>Axion Assistant</h2>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Powered by Gemini Flash-Lite</p>
+                    </div>
+                  </header>
+
+                  <div className="chat-messages">
+                    {messages.map((msg, i) => (
+                      <div key={i} className={`message ${msg.role}`}>
+                        <div className="message-bubble">
+                          {msg.role === 'assistant' ? (
+                            msg.content === "" && isStreaming ? (
+                              <div style={{ display: 'flex', gap: '4px', padding: '4px' }}>
+                                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', animation: 'bounce 1.4s infinite ease-in-out both' }}></div>
+                                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', animation: 'bounce 1.4s infinite ease-in-out both', animationDelay: '0.16s' }}></div>
+                                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', animation: 'bounce 1.4s infinite ease-in-out both', animationDelay: '0.32s' }}></div>
+                              </div>
+                            ) : (
+                              renderMessageContent(msg.content)
+                            )
+                          ) : (
+                            <p>{msg.content}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  <div className="chat-input-wrapper">
+                    <form className="chat-input-box" onSubmit={handleChat}>
+                      <input 
+                        type="text" 
+                        placeholder={status === 'ready' ? "Ask about the video..." : "Waiting for media..."}
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        disabled={status !== 'ready' || isStreaming}
+                      />
+                      <button 
+                        type="submit" 
+                        className="send-button"
+                        disabled={!query.trim() || status !== 'ready' || isStreaming}
+                      >
+                        <Send size={18} />
+                      </button>
+                    </form>
+                  </div>
+                </>
+              ) : activeTab === 'notes' ? (
+                <NotesViewer videoId={videoId || ""} />
+              ) : activeTab === 'flashcards' ? (
+                <FlashcardDeck videoId={videoId || ""} />
+              ) : activeTab === 'quiz' ? (
+                <QuizEngine videoId={videoId || ""} />
+              ) : (
+                <MockTest videoId={videoId || ""} />
+              )}
+            </div>
+
+          </>
+        )}
+      </main>
+      </div>
+    </div>
   );
 }

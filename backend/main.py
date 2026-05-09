@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import router
+from api.auth import router as auth_router
+from core.database import init_db
 
 # ── Logging ──
 logging.basicConfig(
@@ -28,6 +30,7 @@ logger = logging.getLogger("omega")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Axion backend starting…")
+    await init_db()
     yield
     logger.info("👋 Axion backend shutting down.")
 
@@ -54,6 +57,7 @@ app.add_middleware(
 
 # ── Mount API routes ──
 app.include_router(router)
+app.include_router(auth_router)
 
 
 # ── Health check ──
