@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { UploadCloud, CheckCircle, Loader2, Send, PlayCircle, Link as LinkIcon, Sparkles, BookOpen, Brain, CreditCard, ClipboardCheck, MessageSquare } from 'lucide-react';
+import { UploadCloud, CheckCircle, Loader2, Send, PlayCircle, Link as LinkIcon, Sparkles, BookOpen, Brain, CreditCard, ClipboardCheck, MessageSquare, Plus, BarChart3, Share2, Settings, ChevronRight, LayoutGrid } from 'lucide-react';
 import NotesViewer from './components/StudyTools/NotesViewer';
 import FlashcardDeck from './components/StudyTools/FlashcardDeck';
 import QuizEngine from './components/StudyTools/QuizEngine';
@@ -43,7 +43,8 @@ export default function VideoCompanionDashboard() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [query, setQuery] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'notes' | 'quiz' | 'flashcards' | 'mock_test'>('chat');
+  const [selectedTool, setSelectedTool] = useState<'notes' | 'quiz' | 'flashcards' | 'mock_test' | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const mediaRef = useRef<HTMLAudioElement | HTMLVideoElement | null>(null);
   const ytIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -53,8 +54,11 @@ export default function VideoCompanionDashboard() {
 
   useEffect(() => {
     const token = localStorage.getItem('axion_jwt');
+    const email = localStorage.getItem('axion_email');
     if (!token) {
       router.push('/login');
+    } else {
+      setUserEmail(email);
     }
   }, [router]);
 
@@ -333,23 +337,35 @@ export default function VideoCompanionDashboard() {
       <div className="app-container">
         <header className="bento-panel top-navbar">
           <div className="nav-brand">
-            <Sparkles className="nav-brand-icon" size={24} />
-            Axion
+            <div className="brand-logo">
+              <Sparkles size={24} />
+            </div>
+            <div className="brand-text">
+              <h1>Axion AI</h1>
+              <span>Personalized Learning Environment</span>
+            </div>
           </div>
-          <div className="nav-status" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span>LMS Video Companion</span>
-            <span style={{ color: 'var(--border-color)' }}>|</span>
-            <span style={{ color: status === 'ready' ? '#10B981' : 'var(--text-light)' }}>
-              {status === 'idle' ? 'Ready' : status === 'ready' ? 'Online' : 'Processing…'}
-            </span>
-            <span style={{ color: 'var(--border-color)' }}>|</span>
+
+          <div className="nav-center">
+            <button className="create-btn" onClick={() => {setFile(null); setActiveYtUrl(""); setStatus('idle');}}>
+              <Plus size={18} />
+              <span>New Project</span>
+            </button>
+          </div>
+
+          <div className="nav-actions">
+            <button className="nav-icon-btn" title="Analytics"><BarChart3 size={20} /></button>
+            <button className="nav-icon-btn" title="Share"><Share2 size={20} /></button>
+            <button className="nav-icon-btn" title="Settings"><Settings size={20} /></button>
+            <div className="user-profile">
+               <div className="avatar-placeholder">{userEmail ? userEmail[0].toUpperCase() : 'U'}</div>
+            </div>
             <button 
               onClick={() => {
-                localStorage.removeItem("axion_jwt");
+                localStorage.removeItem('axion_jwt');
                 router.push('/login');
               }} 
-              className="pill-tab"
-              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+              className="pill-tab logout-pill"
             >
               Sign Out
             </button>
@@ -400,9 +416,63 @@ export default function VideoCompanionDashboard() {
             </div>
           </div>
         ) : (
-          /* ── ACTIVE WORKSPACE ── */
           <>
-            {/* THEATER VIEW (Left/Center) */}
+            {/* 1. CHAT SIDEBAR (Left) */}
+            <div className="bento-panel sidebar-panel chat-sidebar">
+              <header className="chat-header">
+                <div className="chat-header-icon">
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <h2>Axion Assistant</h2>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Powered by Gemini Flash-Lite</p>
+                </div>
+              </header>
+
+              <div className="chat-messages">
+                {messages.map((msg, i) => (
+                  <div key={i} className={`message ${msg.role}`}>
+                    <div className="message-bubble">
+                      {msg.role === 'assistant' ? (
+                        msg.content === "" && isStreaming ? (
+                          <div style={{ display: 'flex', gap: '4px', padding: '4px' }}>
+                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', animation: 'bounce 1.4s infinite ease-in-out both' }}></div>
+                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', animation: 'bounce 1.4s infinite ease-in-out both', animationDelay: '0.16s' }}></div>
+                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', animation: 'bounce 1.4s infinite ease-in-out both', animationDelay: '0.32s' }}></div>
+                          </div>
+                        ) : (
+                          renderMessageContent(msg.content)
+                        )
+                      ) : (
+                        <p>{msg.content}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+
+              <div className="chat-input-wrapper">
+                <form className="chat-input-box" onSubmit={handleChat}>
+                  <input 
+                    type="text" 
+                    placeholder={status === 'ready' ? "Ask about the video..." : "Waiting for media..."}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    disabled={status !== 'ready' || isStreaming}
+                  />
+                  <button 
+                    type="submit" 
+                    className="send-button"
+                    disabled={!query.trim() || status !== 'ready' || isStreaming}
+                  >
+                    <Send size={18} />
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* 2. THEATER VIEW (Center) */}
             <div className="bento-panel theater-panel">
               
               {/* Status Banner (if processing) */}
@@ -501,111 +571,76 @@ export default function VideoCompanionDashboard() {
               )}
             </div>
 
-            {/* CHAT SIDEBAR (Right) */}
-            <div className="bento-panel sidebar-panel">
-              <nav className="tab-nav">
-                <button 
-                  className={`tab-btn ${activeTab === 'chat' ? 'active' : ''}`} 
-                  onClick={() => setActiveTab('chat')}
-                  title="Chat"
-                >
-                  <MessageSquare size={18} />
-                </button>
-                <button 
-                  className={`tab-btn ${activeTab === 'notes' ? 'active' : ''}`} 
-                  onClick={() => setActiveTab('notes')}
-                  title="Notes"
-                >
-                  <BookOpen size={18} />
-                </button>
-                <button 
-                  className={`tab-btn ${activeTab === 'flashcards' ? 'active' : ''}`} 
-                  onClick={() => setActiveTab('flashcards')}
-                  title="Flashcards"
-                >
-                  <CreditCard size={18} />
-                </button>
-                <button 
-                  className={`tab-btn ${activeTab === 'quiz' ? 'active' : ''}`} 
-                  onClick={() => setActiveTab('quiz')}
-                  title="Quiz"
-                >
-                  <Brain size={18} />
-                </button>
-                <button 
-                  className={`tab-btn ${activeTab === 'mock_test' ? 'active' : ''}`} 
-                  onClick={() => setActiveTab('mock_test')}
-                  title="Mock Test"
-                >
-                  <ClipboardCheck size={18} />
-                </button>
-              </nav>
+            {/* 3. STUDIO SIDEBAR (Right) */}
+            <div className="bento-panel sidebar-panel study-sidebar">
+              <header className="sidebar-header">
+                <h2>Studio</h2>
+                <div className="header-actions">
+                   <LayoutGrid size={18} />
+                </div>
+              </header>
 
-              {activeTab === 'chat' ? (
-                <>
-                  <header className="chat-header">
-                    <div className="chat-header-icon">
-                      <Sparkles size={16} />
+              <div className="studio-container">
+                <div className="studio-grid">
+                  <div className={`studio-card notes ${selectedTool === 'notes' ? 'active' : ''}`} onClick={() => setSelectedTool('notes')}>
+                    <div className="card-icon"><BookOpen size={20} /></div>
+                    <div className="card-info">
+                      <h3>AI Notes</h3>
+                      <p>Structured summary</p>
                     </div>
-                    <div>
-                      <h2>Axion Assistant</h2>
-                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Powered by Gemini Flash-Lite</p>
-                    </div>
-                  </header>
-
-                  <div className="chat-messages">
-                    {messages.map((msg, i) => (
-                      <div key={i} className={`message ${msg.role}`}>
-                        <div className="message-bubble">
-                          {msg.role === 'assistant' ? (
-                            msg.content === "" && isStreaming ? (
-                              <div style={{ display: 'flex', gap: '4px', padding: '4px' }}>
-                                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', animation: 'bounce 1.4s infinite ease-in-out both' }}></div>
-                                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', animation: 'bounce 1.4s infinite ease-in-out both', animationDelay: '0.16s' }}></div>
-                                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', animation: 'bounce 1.4s infinite ease-in-out both', animationDelay: '0.32s' }}></div>
-                              </div>
-                            ) : (
-                              renderMessageContent(msg.content)
-                            )
-                          ) : (
-                            <p>{msg.content}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    <div ref={messagesEndRef} />
+                    <ChevronRight size={16} className="arrow" />
                   </div>
 
-                  <div className="chat-input-wrapper">
-                    <form className="chat-input-box" onSubmit={handleChat}>
-                      <input 
-                        type="text" 
-                        placeholder={status === 'ready' ? "Ask about the video..." : "Waiting for media..."}
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        disabled={status !== 'ready' || isStreaming}
-                      />
-                      <button 
-                        type="submit" 
-                        className="send-button"
-                        disabled={!query.trim() || status !== 'ready' || isStreaming}
-                      >
-                        <Send size={18} />
+                  <div className={`studio-card quiz ${selectedTool === 'quiz' ? 'active' : ''}`} onClick={() => setSelectedTool('quiz')}>
+                    <div className="card-icon"><Brain size={20} /></div>
+                    <div className="card-info">
+                      <h3>AI Quiz</h3>
+                      <p>Test your knowledge</p>
+                    </div>
+                    <ChevronRight size={16} className="arrow" />
+                  </div>
+
+                  <div className={`studio-card cards ${selectedTool === 'flashcards' ? 'active' : ''}`} onClick={() => setSelectedTool('flashcards')}>
+                    <div className="card-icon"><CreditCard size={20} /></div>
+                    <div className="card-info">
+                      <h3>Flashcards</h3>
+                      <p>Active recall</p>
+                    </div>
+                    <ChevronRight size={16} className="arrow" />
+                  </div>
+
+                  <div className={`studio-card mock ${selectedTool === 'mock_test' ? 'active' : ''}`} onClick={() => setSelectedTool('mock_test')}>
+                    <div className="card-icon"><ClipboardCheck size={20} /></div>
+                    <div className="card-info">
+                      <h3>Mock Test</h3>
+                      <p>Final assessment</p>
+                    </div>
+                    <ChevronRight size={16} className="arrow" />
+                  </div>
+                </div>
+
+                {selectedTool && (
+                  <div className="tool-overlay">
+                    <header className="tool-header">
+                      <button className="back-btn" onClick={() => setSelectedTool(null)}>
+                        <ChevronRight size={18} style={{ transform: 'rotate(180deg)' }} /> Back to Studio
                       </button>
-                    </form>
+                    </header>
+                    <div className="tool-content">
+                      {selectedTool === 'notes' ? (
+                        <NotesViewer videoId={videoId || ""} />
+                      ) : selectedTool === 'flashcards' ? (
+                        <FlashcardDeck videoId={videoId || ""} />
+                      ) : selectedTool === 'quiz' ? (
+                        <QuizEngine videoId={videoId || ""} />
+                      ) : (
+                        <MockTest videoId={videoId || ""} />
+                      )}
+                    </div>
                   </div>
-                </>
-              ) : activeTab === 'notes' ? (
-                <NotesViewer videoId={videoId || ""} />
-              ) : activeTab === 'flashcards' ? (
-                <FlashcardDeck videoId={videoId || ""} />
-              ) : activeTab === 'quiz' ? (
-                <QuizEngine videoId={videoId || ""} />
-              ) : (
-                <MockTest videoId={videoId || ""} />
-              )}
+                )}
+              </div>
             </div>
-
           </>
         )}
       </main>

@@ -33,6 +33,7 @@ export default function LoginPage() {
       }
 
       localStorage.setItem("axion_jwt", data.access_token);
+      localStorage.setItem("axion_email", email);
       router.push("/");
     } catch (err: any) {
       setError(err.message);

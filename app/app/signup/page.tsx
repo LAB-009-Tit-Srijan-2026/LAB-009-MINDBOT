@@ -70,6 +70,7 @@ export default function SignupPage() {
       
       if (loginRes.ok) {
         localStorage.setItem("axion_jwt", loginData.access_token);
+        localStorage.setItem("axion_email", email);
         router.push("/");
       } else {
         router.push("/login");
