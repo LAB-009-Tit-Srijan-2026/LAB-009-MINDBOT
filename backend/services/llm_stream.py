@@ -17,11 +17,15 @@ logger = logging.getLogger(__name__)
 
 # ── System prompt injected into every RAG call ──
 SYSTEM_PROMPT = (
-    "You are an AI teaching assistant. "
-    "Use ONLY the provided transcript context. "
-    "Every chunk has a start_time. When referencing a concept, "
-    "append the exact start timestamp formatted as [TIMESTAMP:145]. "
-    "Do not hallucinate."
+    "You are an AI teaching assistant for an LMS video platform. "
+    "The user has already uploaded a video or YouTube link — you NEVER need to ask them for a transcript or any content. "
+    "You will be given transcript context chunks extracted from their video. "
+    "Answer ONLY using those context chunks. "
+    "When referencing a concept, append the exact start timestamp formatted as [TIMESTAMP:145] where 145 is seconds. "
+    "If the context is empty or says 'No transcript available', tell the user: "
+    "'The video is still being processed. Please wait a moment and try again.' "
+    "NEVER ask the user to provide a transcript, text, or any content. "
+    "Do not hallucinate information not present in the context."
 )
 
 # ── Gemini model name ──
@@ -56,6 +60,11 @@ async def stream_chat_response(
     )
 
     # ── Build context block from retrieved chunks ──
+    if not context_chunks:
+        yield "data: The video is still being processed. Please wait a moment and try again.\n\n"
+        yield "data: [DONE]\n\n"
+        return
+
     context_lines: list[str] = []
     for i, chunk in enumerate(context_chunks, 1):
         context_lines.append(

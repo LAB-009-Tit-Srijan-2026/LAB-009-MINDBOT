@@ -1,5 +1,5 @@
 """
-main.py — FastAPI application entry point for Project Omega.
+main.py — FastAPI application entry point for Axion.
 
 Configures:
   • CORS middleware (all origins — hackathon mode)
@@ -27,14 +27,14 @@ logger = logging.getLogger("omega")
 # ── Lifespan (startup / shutdown hooks) ──
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("🚀 Project Omega backend starting…")
+    logger.info("🚀 Axion backend starting…")
     yield
-    logger.info("👋 Project Omega backend shutting down.")
+    logger.info("👋 Axion backend shutting down.")
 
 
 # ── Application ──
 app = FastAPI(
-    title="Project Omega — LMS Video Companion",
+    title="Axion — LMS Video Companion",
     description=(
         "AI-Powered Retrieval-Augmented Generation backend for educational "
         "video analysis.  Transcribe → Chunk → Embed → Retrieve → Stream."

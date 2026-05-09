@@ -15,6 +15,11 @@ class IngestResponse(BaseModel):
 
 # ── API Requests ──
 
+class YouTubeIngestRequest(BaseModel):
+    """Body for POST /api/v1/ingest/youtube."""
+    youtube_url: str = Field(..., description="The YouTube URL to ingest.")
+
+
 class ChatRequest(BaseModel):
     """Body for POST /api/v1/chat/stream."""
     session_id: str = Field(..., description="Client-side session identifier.")

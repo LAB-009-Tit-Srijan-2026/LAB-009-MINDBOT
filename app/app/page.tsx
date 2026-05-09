@@ -1,243 +1,448 @@
-export default function Home() {
-  return (
-    <main className="dashboard-shell">
-      <aside className="sidebar">
-        <div className="sidebar-top">
-          <div className="brand">
-            <div className="brand-mark">A</div>
-            <div>
-              <p className="brand-name">Axion</p>
-              <p className="brand-subtitle">SaaS Edge</p>
-            </div>
-          </div>
-          <p className="brand-note">Premium analytics for modern teams.</p>
-        </div>
+"use client";
 
-        <nav className="nav-menu" aria-label="Primary">
-          <button className="nav-item active">
-            <span className="nav-icon">📊</span>
-            Dashboard
-          </button>
-          <button className="nav-item">
-            <span className="nav-icon">📈</span>
-            Analytics
-          </button>
-          <button className="nav-item">
-            <span className="nav-icon">📁</span>
-            Projects
-          </button>
-          <button className="nav-item">
-            <span className="nav-icon">💬</span>
-            Messages
-          </button>
-          <button className="nav-item">
-            <span className="nav-icon">🗓️</span>
-            Bookings
-          </button>
-          <button className="nav-item">
-            <span className="nav-icon">⚙️</span>
-            Settings
-          </button>
-        </nav>
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { UploadCloud, CheckCircle, Loader2, Send, PlayCircle, Link as LinkIcon, Sparkles } from 'lucide-react';
 
-        <button className="nav-item logout">
-          <span className="nav-icon">🚪</span>
-          Logout
+const API_BASE = "http://localhost:8000/api/v1";
+
+type Message = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+type PipelineStatus = {
+  status: string;
+  step: string;
+  progress: number;
+};
+
+/** Extract YouTube video ID from any URL format */
+function extractYouTubeId(url: string): string | null {
+  const match = url.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([A-Za-z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
+
+export default function VideoCompanionDashboard() {
+  const [file, setFile] = useState<File | null>(null);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [ytUrl, setYtUrl] = useState<string>("");
+  const [activeYtUrl, setActiveYtUrl] = useState<string | null>(null);
+  
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'ready'>('idle');
+  const [pipelineInfo, setPipelineInfo] = useState<PipelineStatus>({ status: '', step: '', progress: 0 });
+  
+  const [summary, setSummary] = useState<string[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [query, setQuery] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+
+  const mediaRef = useRef<HTMLAudioElement | HTMLVideoElement | null>(null);
+  const ytIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // ── Poll pipeline status from backend ──
+  const pollStatus = useCallback(async (id: string) => {
+    setVideoId(id);
+    setStatus('processing');
+
+    // Poll the /status endpoint every 3s until ready or error
+    for (let attempt = 0; attempt < 120; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      try {
+        const res = await fetch(`${API_BASE}/status/${id}`);
+        const data: PipelineStatus = await res.json();
+        setPipelineInfo(data);
+
+        if (data.status === 'ready') {
+          // Fetch summary now that pipeline is done
+          try {
+            const summaryRes = await fetch(`${API_BASE}/summary/last_5_mins?video_id=${id}&current_time=0`);
+            const summaryData = await summaryRes.json();
+            const summaryText = summaryData.summary || "";
+            if (summaryText && !summaryText.toLowerCase().includes("please provide")) {
+              const bullets = summaryText
+                .split('\n')
+                .map((line: string) => line.replace(/^[•\-\*]\s*/, '').trim())
+                .filter(Boolean);
+              setSummary(bullets);
+            }
+          } catch { /* summary is optional */ }
+
+          setStatus('ready');
+          setMessages([{
+            role: 'assistant',
+            content: "I've analyzed the media. Feel free to ask me any questions about it!"
+          }]);
+          return;
+        }
+
+        if (data.status === 'error') {
+          setStatus('ready'); // Allow user to chat even on error
+          setMessages([{
+            role: 'assistant',
+            content: "There was an issue processing the video, but you can still try asking questions."
+          }]);
+          return;
+        }
+      } catch {
+        // Backend not ready yet
+      }
+    }
+
+    // Timeout fallback
+    setStatus('ready');
+  }, []);
+
+  // Handle standard file upload
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (!selected) return;
+    
+    setFile(selected);
+    setFileUrl(URL.createObjectURL(selected));
+    setStatus('uploading');
+    setPipelineInfo({ status: 'uploading', step: 'Uploading file…', progress: 5 });
+
+    const formData = new FormData();
+    formData.append('file', selected);
+
+    try {
+      const res = await fetch(`${API_BASE}/ingest`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      await pollStatus(data.video_id);
+    } catch (error) {
+      handleIngestError(error);
+    }
+  };
+
+  // Handle YouTube Link Submit
+  const handleYoutubeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ytUrl.trim()) return;
+
+    setActiveYtUrl(ytUrl);
+    setStatus('uploading');
+    setPipelineInfo({ status: 'uploading', step: 'Sending to backend…', progress: 5 });
+
+    try {
+      const res = await fetch(`${API_BASE}/ingest/youtube`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ youtube_url: ytUrl }),
+      });
+      const data = await res.json();
+      await pollStatus(data.video_id);
+    } catch (error) {
+      handleIngestError(error);
+    }
+  };
+
+  const handleIngestError = (error: any) => {
+    console.error("Upload failed", error);
+    setStatus('idle');
+    setFile(null);
+    setFileUrl(null);
+    setActiveYtUrl(null);
+    setPipelineInfo({ status: '', step: '', progress: 0 });
+    alert("Failed to ingest media. Is the backend running?");
+  };
+
+  // Handle Chat Streaming (SSE)
+  const handleChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim() || !videoId || isStreaming) return;
+
+    const userMessage: Message = { role: 'user', content: query };
+    setMessages(prev => [...prev, userMessage, { role: 'assistant', content: "" }]);
+    setQuery("");
+    setIsStreaming(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: "demo-session",
+          video_id: videoId,
+          query: userMessage.content
+        })
+      });
+
+      if (!response.body) throw new Error("No response body");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                done = true;
+                break;
+              }
+              
+              setMessages(prev => {
+                const newMessages = [...prev];
+                const last = newMessages[newMessages.length - 1];
+                if (last.role === 'assistant') {
+                  last.content += data;
+                }
+                return newMessages;
+              });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Chat error", error);
+    } finally {
+      setIsStreaming(false);
+    }
+  };
+
+  // Clickable Timestamps Parser
+  const renderMessageContent = (content: string) => {
+    const regex = /\[TIMESTAMP:([\d.]+)\]/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(content)) !== null) {
+      parts.push(<span key={lastIndex}>{content.slice(lastIndex, match.index)}</span>);
+      
+      const timeNum = parseFloat(match[1]);
+      const formattedTime = new Date(timeNum * 1000).toISOString().substr(14, 5);
+      
+      parts.push(
+        <button 
+          key={match.index}
+          className="timestamp-badge"
+          onClick={() => {
+            if (activeYtUrl && ytIframeRef.current) {
+              ytIframeRef.current.contentWindow?.postMessage(
+                JSON.stringify({ event: 'command', func: 'seekTo', args: [timeNum, true] }),
+                '*'
+              );
+            } else if (mediaRef.current) {
+              mediaRef.current.currentTime = timeNum;
+              mediaRef.current.play();
+            }
+          }}
+        >
+          <PlayCircle size={12} /> {formattedTime}
         </button>
-      </aside>
+      );
+      lastIndex = regex.lastIndex;
+    }
+    
+    parts.push(<span key={lastIndex}>{content.slice(lastIndex)}</span>);
+    return <p className="prose">{parts}</p>;
+  };
 
-      <section className="dashboard-main">
-        <header className="topbar">
-          <div className="search-wrap">
-            <span className="search-icon">🔍</span>
-            <input type="search" placeholder="Search reports, projects or users" aria-label="Search" />
-          </div>
-          <div className="topbar-actions">
-            <button className="icon-button" aria-label="Notifications">🔔</button>
-            <button className="icon-button" aria-label="Toggle theme">🌓</button>
-            <div className="profile-chip">
-              <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=80&q=80" alt="User avatar" />
-              <div>
-                <p>Jamie</p>
-                <small>Admin</small>
+  const isProcessing = status === 'uploading' || status === 'processing';
+  const ytId = activeYtUrl ? extractYouTubeId(activeYtUrl) : null;
+
+  return (
+    <main className="app-container">
+      {/* ── LEFT PANEL (Ingestion & Summary) ── */}
+      <section className="panel-left">
+        <h1>Axion</h1>
+        <p className="subtitle">LMS Video Companion RAG Dashboard</p>
+
+        {/* Upload Zone */}
+        {!file && !activeYtUrl && (
+          <div style={{ marginBottom: '2rem' }}>
+            <label className={`upload-zone ${status === 'uploading' ? 'dragging' : ''}`} style={{ display: 'block', marginBottom: '1rem' }}>
+              <UploadCloud className="upload-icon" style={{ margin: '0 auto 1rem' }} />
+              <p className="upload-text">Drag & drop your media</p>
+              <p className="upload-subtext">Supports .mp4, .mp3, .wav files</p>
+              <input 
+                type="file" 
+                className="file-input" 
+                accept="audio/*,video/*"
+                onChange={handleFileChange}
+                disabled={status !== 'idle'}
+              />
+            </label>
+
+            <form onSubmit={handleYoutubeSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <LinkIcon size={18} style={{ position: 'absolute', left: 12, top: 10, color: 'var(--text-muted)' }} />
+                <input 
+                  type="text" 
+                  placeholder="Or paste a YouTube URL..." 
+                  value={ytUrl}
+                  onChange={(e) => setYtUrl(e.target.value)}
+                  disabled={status !== 'idle'}
+                  style={{
+                    width: '100%',
+                    padding: '0.6rem 1rem 0.6rem 2.5rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-bright)',
+                    background: 'var(--bg-base)',
+                    color: 'var(--text-primary)'
+                  }}
+                />
               </div>
+              <button 
+                type="submit" 
+                disabled={!ytUrl.trim() || status !== 'idle'}
+                style={{
+                  padding: '0 1.2rem',
+                  borderRadius: '8px',
+                  background: 'var(--accent-base)',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: !ytUrl.trim() || status !== 'idle' ? 'not-allowed' : 'pointer',
+                  opacity: !ytUrl.trim() || status !== 'idle' ? 0.5 : 1
+                }}
+              >
+                Ingest
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ── Custom Video Player with Processing Overlay ── */}
+        {(activeYtUrl || fileUrl) && (
+          <div className="custom-player-wrapper">
+            {/* The actual player (YT iframe or HTML5 video/audio) */}
+            <div className={`custom-player ${isProcessing ? 'player-dimmed' : ''}`}>
+              {ytId ? (
+                <iframe
+                  ref={ytIframeRef}
+                  width="100%"
+                  height="100%"
+                  src={`https://www.youtube.com/embed/${ytId}?enablejsapi=1&rel=0&modestbranding=1`}
+                  title="YouTube video player"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  style={{ border: 'none', display: 'block' }}
+                />
+              ) : fileUrl && file?.type.startsWith('video/') ? (
+                <video ref={mediaRef as React.RefObject<HTMLVideoElement>} src={fileUrl} controls />
+              ) : fileUrl ? (
+                <audio ref={mediaRef as React.RefObject<HTMLAudioElement>} src={fileUrl} controls />
+              ) : null}
             </div>
+
+            {/* ── Processing Overlay ── */}
+            {isProcessing && (
+              <div className="player-processing-overlay">
+                <div className="processing-content">
+                  <div className="processing-spinner">
+                    <Sparkles size={28} className="sparkle-icon" />
+                  </div>
+                  <p className="processing-step">{pipelineInfo.step || 'Initializing…'}</p>
+                  <div className="processing-bar-track">
+                    <div 
+                      className="processing-bar-fill"
+                      style={{ width: `${pipelineInfo.progress || 5}%` }}
+                    />
+                  </div>
+                  <p className="processing-percent">{pipelineInfo.progress || 5}%</p>
+                </div>
+              </div>
+            )}
+
+            {/* Ready badge */}
+            {status === 'ready' && (
+              <div className="player-ready-badge">
+                <CheckCircle size={14} /> Ready
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Summary Card */}
+        {summary.length > 0 && (
+          <div className="summary-card">
+            <h2 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Smart Summary</h2>
+            <ul className="summary-list">
+              {summary.map((pt, i) => (
+                <li key={i}>{pt}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+
+      {/* ── RIGHT PANEL (Chat Interface) ── */}
+      <section className="panel-right">
+        <header className="chat-header">
+          <div style={{ background: 'var(--accent-base)', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ color: '#fff', fontSize: 18 }}>✦</span>
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1rem', margin: 0 }}>Axion Assistant</h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Powered by Gemini Flash-Lite</p>
           </div>
         </header>
 
-        <div className="hero-row">
-          <div className="hero-copy">
-            <p className="eyebrow">Overview</p>
-            <h1>Modern SaaS analytics designed for growth.</h1>
-            <p className="hero-description">Track key metrics, collaborate with teams, and make faster decisions with a high-performance dashboard experience.</p>
-          </div>
-          <div className="hero-actions">
-            <button className="primary-button">New Report</button>
-            <button className="secondary-button">View Insights</button>
-          </div>
-        </div>
-
-        <div className="stat-grid">
-          <article className="stat-card">
-            <div className="card-top">
-              <span className="card-icon">💼</span>
-              <span className="badge success">+12.4%</span>
+        <div className="chat-messages">
+          {messages.length === 0 && (
+            <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <p>Upload a file or paste a YouTube URL to start chatting.</p>
             </div>
-            <h2>3.8K</h2>
-            <p>Active Clients</p>
-          </article>
-
-          <article className="stat-card">
-            <div className="card-top">
-              <span className="card-icon">💰</span>
-              <span className="badge success">+9.1%</span>
-            </div>
-            <h2>$124.8K</h2>
-            <p>MRR</p>
-          </article>
-
-          <article className="stat-card">
-            <div className="card-top">
-              <span className="card-icon">⚡</span>
-              <span className="badge warning">+4.8%</span>
-            </div>
-            <h2>92%</h2>
-            <p>Retention</p>
-          </article>
-
-          <article className="stat-card">
-            <div className="card-top">
-              <span className="card-icon">📬</span>
-              <span className="badge neutral">New</span>
-            </div>
-            <h2>18</h2>
-            <p>Unread Messages</p>
-          </article>
-        </div>
-
-        <div className="grid-layout">
-          <section className="analytics-panel glass-card">
-            <div className="panel-header">
-              <div>
-                <p className="panel-label">Revenue analytics</p>
-                <h2>$54.2K</h2>
+          )}
+          
+          {messages.map((msg, i) => (
+            <div key={i} className={`message ${msg.role}`}>
+              <div className="message-bubble">
+                {msg.role === 'assistant' ? (
+                  msg.content === "" && isStreaming ? (
+                    <div className="typing-indicator">
+                      <div className="typing-dot"></div>
+                      <div className="typing-dot"></div>
+                      <div className="typing-dot"></div>
+                    </div>
+                  ) : (
+                    renderMessageContent(msg.content)
+                  )
+                ) : (
+                  <p>{msg.content}</p>
+                )}
               </div>
-              <button className="icon-button small">⏱️</button>
             </div>
-            <div className="chart-legend">
-              <span className="legend-dot sales"></span>
-              <span>Sales</span>
-              <span className="legend-dot visitors"></span>
-              <span>Visitors</span>
-            </div>
-            <div className="chart-grid">
-              <div className="chart-line"></div>
-              <div className="chart-line secondary"></div>
-            </div>
-          </section>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
 
-          <aside className="activity-panel glass-card">
-            <div className="panel-header">
-              <p className="panel-label">Recent activity</p>
-              <button className="text-button">See all</button>
-            </div>
-            <ul className="activity-list">
-              <li>
-                <div className="activity-icon success">✓</div>
-                <div>
-                  <p>Payment confirmed</p>
-                  <small>Invoice #1921 for Acme Co.</small>
-                </div>
-                <span>2m ago</span>
-              </li>
-              <li>
-                <div className="activity-icon warning">!</div>
-                <div>
-                  <p>New booking</p>
-                  <small>Meeting room request approved.</small>
-                </div>
-                <span>14m ago</span>
-              </li>
-              <li>
-                <div className="activity-icon neutral">•</div>
-                <div>
-                  <p>Project launch</p>
-                  <small>Marketing campaign is live.</small>
-                </div>
-                <span>1h ago</span>
-              </li>
-            </ul>
-          </aside>
-
-          <section className="table-panel glass-card">
-            <div className="panel-header">
-              <p className="panel-label">User activity</p>
-              <button className="text-button">Export</button>
-            </div>
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>User</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Activity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="user-cell">
-                      <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=80&q=80" alt="Mia" />
-                      <div>
-                        <p>Mia Chen</p>
-                        <small>Product Lead</small>
-                      </div>
-                    </td>
-                    <td>Design</td>
-                    <td><span className="status-badge active">Online</span></td>
-                    <td>3m ago</td>
-                  </tr>
-                  <tr>
-                    <td className="user-cell">
-                      <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&q=80" alt="Noah" />
-                      <div>
-                        <p>Noah Patel</p>
-                        <small>Growth Analyst</small>
-                      </div>
-                    </td>
-                    <td>Growth</td>
-                    <td><span className="status-badge pending">Idle</span></td>
-                    <td>16m ago</td>
-                  </tr>
-                  <tr>
-                    <td className="user-cell">
-                      <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=80&q=80" alt="Lina" />
-                      <div>
-                        <p>Lina Park</p>
-                        <small>Support</small>
-                      </div>
-                    </td>
-                    <td>Customer</td>
-                    <td><span className="status-badge offline">Offline</span></td>
-                    <td>52m ago</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="actions-panel glass-card">
-            <div className="panel-header">
-              <p className="panel-label">Quick actions</p>
-              <button className="text-button">Manage</button>
-            </div>
-            <div className="action-grid">
-              <button className="action-button">Create invoice</button>
-              <button className="action-button">Schedule demo</button>
-              <button className="action-button">Launch campaign</button>
-              <button className="action-button">Review metrics</button>
-            </div>
-          </section>
+        <div className="chat-input-wrapper">
+          <form className="chat-input-box" onSubmit={handleChat}>
+            <input 
+              type="text" 
+              placeholder={status === 'ready' ? "Ask about the video..." : "Waiting for media..."}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              disabled={status !== 'ready' || isStreaming}
+            />
+            <button 
+              type="submit" 
+              className="send-button"
+              disabled={!query.trim() || status !== 'ready' || isStreaming}
+            >
+              <Send size={16} />
+            </button>
+          </form>
         </div>
       </section>
     </main>

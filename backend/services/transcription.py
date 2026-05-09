@@ -2,56 +2,76 @@
 services/transcription.py — Deepgram audio transcription and semantic chunking.
 
 Handles:
-  1. Sending audio buffers to Deepgram Nova-2 (sync SDK wrapped in asyncio.to_thread)
-     with word-level timestamps.
-  2. Grouping utterances into ~45-second semantic chunks via a sliding-window approach.
+  1. Sending a YouTube/audio URL directly to Deepgram (URL-based transcription).
+  2. Sending raw audio buffers for file-based uploads.
+  3. Grouping utterances into ~45-second semantic chunks via a sliding-window approach.
 """
 
-import asyncio
 import logging
-from deepgram import DeepgramClient
+import httpx
+
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 
 # ────────────────────────────────────────────────────────────────────
-#  1.  Deepgram Transcription
+#  1a. Deepgram Transcription — from a public URL (YouTube-friendly)
+# ────────────────────────────────────────────────────────────────────
+
+async def transcribe_from_url(audio_url: str) -> dict:
+    """
+    Tell Deepgram to fetch and transcribe audio from a public URL.
+    This avoids upload timeouts entirely — ideal for YouTube audio streams.
+    """
+    settings = get_settings()
+    logger.info("Requesting Deepgram to transcribe URL: %s", audio_url[:80])
+
+    api_url = (
+        "https://api.deepgram.com/v1/listen"
+        "?model=nova-2&punctuate=true&smart_format=true&utterances=true"
+    )
+    headers = {
+        "Authorization": f"Token {settings.DEEPGRAM_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {"url": audio_url}
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        response = await client.post(api_url, headers=headers, json=payload)
+        response.raise_for_status()
+        result = response.json()
+
+    utterance_count = len(result.get("results", {}).get("utterances", []))
+    logger.info("Deepgram returned %d utterances from URL.", utterance_count)
+    return result
+
+
+# ────────────────────────────────────────────────────────────────────
+#  1b. Deepgram Transcription — raw bytes upload (file uploads)
 # ────────────────────────────────────────────────────────────────────
 
 async def transcribe_audio(audio_buffer: bytes, mimetype: str = "audio/wav") -> dict:
     """
-    Send an audio/video buffer to Deepgram and return the full transcript
-    response as a dictionary including word-level timestamps.
-
-    Uses the Nova-2 model with utterances and punctuation enabled.
-    Deepgram SDK v7 uses client.listen.v1.media.transcribe_file().
+    Send an audio/video buffer to Deepgram and return the full transcript.
+    Used for local file uploads.
     """
     settings = get_settings()
-    client = DeepgramClient(api_key=settings.DEEPGRAM_API_KEY)
-
     logger.info("Sending %d bytes (%s) to Deepgram for transcription…", len(audio_buffer), mimetype)
 
-    # Deepgram SDK v7: client.listen.v1.media.transcribe_file() is synchronous
-    def _transcribe():
-        response = client.listen.v1.media.transcribe_file(
-            request=audio_buffer,
-            model="nova-2",
-            utterances=True,
-            punctuate=True,
-            smart_format=True,
-        )
-        return response
+    url = (
+        "https://api.deepgram.com/v1/listen"
+        "?model=nova-2&punctuate=true&smart_format=true&utterances=true"
+    )
+    headers = {
+        "Authorization": f"Token {settings.DEEPGRAM_API_KEY}",
+        "Content-Type": mimetype,
+    }
 
-    response = await asyncio.to_thread(_transcribe)
-
-    # Convert to dict — response is a Pydantic-like model
-    if hasattr(response, "to_dict"):
-        result = response.to_dict()
-    elif hasattr(response, "model_dump"):
-        result = response.model_dump()
-    else:
-        result = dict(response)
+    async with httpx.AsyncClient(timeout=600.0) as client:
+        response = await client.post(url, headers=headers, content=audio_buffer)
+        response.raise_for_status()
+        result = response.json()
 
     utterance_count = len(result.get("results", {}).get("utterances", []))
     logger.info("Deepgram returned %d utterances.", utterance_count)
