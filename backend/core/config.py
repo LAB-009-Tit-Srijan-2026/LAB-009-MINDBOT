@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "https://api.athex.xyz/api/v1/auth/google/callback"
+    HTTPS_PROXY: str = ""
 
 
 @lru_cache()

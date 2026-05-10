@@ -11,15 +11,20 @@ async def download_youtube_audio(url: str) -> str:
     Download audio from a YouTube URL and return the path to the temporary file.
     The caller is responsible for deleting the file.
     """
+    from core.config import get_settings
+    settings = get_settings()
+
     ydl_opts = {
+        'proxy': settings.HTTPS_PROXY if settings.HTTPS_PROXY else None,
         'format': 'bestaudio/best',
         'outtmpl': os.path.join(tempfile.gettempdir(), '%(id)s.%(ext)s'),
         'quiet': True,
         'no_warnings': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        'nocheckcertificate': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['mweb', 'android', 'web'],
+                'player_client': ['ios', 'android', 'mweb'],
                 'skip': ['hls', 'dash']
             }
         }

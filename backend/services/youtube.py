@@ -31,14 +31,20 @@ def _extract_video_id(url: str) -> str:
 def _fetch_transcript_sync(video_id: str) -> List[dict]:
     """
     Fetch YouTube transcript using the v1.2+ API.
-    Tries English first, then any available language (with translation to English if possible).
     Returns list of dicts: [{'text': '...', 'start': float, 'duration': float}, ...]
     """
+    from core.config import get_settings
+    settings = get_settings()
+    
+    proxies = None
+    if settings.HTTPS_PROXY:
+        proxies = {"https": settings.HTTPS_PROXY}
+
     ytt = YouTubeTranscriptApi()
 
     # First, try to fetch English directly
     try:
-        result = ytt.fetch(video_id, languages=['en', 'en-US', 'en-GB'])
+        result = ytt.fetch(video_id, languages=['en', 'en-US', 'en-GB'], proxies=proxies)
         snippets = list(result)
         logger.info("[%s] Got %d English transcript snippets.", video_id, len(snippets))
         return [{'text': s.text, 'start': s.start, 'duration': s.duration} for s in snippets]
@@ -47,7 +53,7 @@ def _fetch_transcript_sync(video_id: str) -> List[dict]:
 
     # List all available transcripts
     try:
-        transcript_list = ytt.list(video_id)
+        transcript_list = ytt.list(video_id, proxies=proxies)
     except Exception as e:
         raise RuntimeError(f"Could not list transcripts for {video_id}: {e}")
 
@@ -87,7 +93,7 @@ def _fetch_transcript_sync(video_id: str) -> List[dict]:
 
     # Absolute fallback: fetch whatever is available
     try:
-        result = ytt.fetch(video_id)
+        result = ytt.fetch(video_id, proxies=proxies)
         snippets = list(result)
         logger.info("[%s] Got %d snippets via fallback fetch.", video_id, len(snippets))
         return [{'text': s.text, 'start': s.start, 'duration': s.duration} for s in snippets]
