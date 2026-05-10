@@ -244,6 +244,9 @@ function DashboardContent() {
               },
             ]);
             fetchProjects();
+            
+            // Redirect to the new session
+            router.push(`/?session=${id}`);
             return;
           }
           if (data.status === "error") {
@@ -482,14 +485,18 @@ function DashboardContent() {
     <div className="app-shell">
       {/* ── TOPBAR ── */}
       <header className="topbar">
-        <Link href="/" className="topbar-logo">
+        <button 
+          onClick={resetToIdle} 
+          className="topbar-logo"
+          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer' }}
+        >
           <img
             src="/logo.png"
             alt="Athex"
             style={{ height: 24, width: "auto" }}
           />
           Athex
-        </Link>
+        </button>
         <div className="topbar-divider" />
         <div className="topbar-project">
           {currentProjectTitle ? (
