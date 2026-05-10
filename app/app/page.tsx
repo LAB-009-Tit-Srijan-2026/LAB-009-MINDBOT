@@ -84,23 +84,11 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [isAuthorized, setIsAuthorized] = useState(false);
-
   useEffect(() => {
-    const token = localStorage.getItem("axion_jwt");
     const email = localStorage.getItem("axion_email");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-    setIsAuthorized(true);
     setUserEmail(email);
     fetchProjects();
   }, [router]);
-
-  if (!isAuthorized) {
-    return null; // Or a loading spinner
-  }
 
   // Handle session persistence via URL
   useEffect(() => {

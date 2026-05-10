@@ -1,5 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import AuthGuard from './components/AuthGuard';
 
 export const metadata: Metadata = {
   title: 'Athex — Intelligent Learning Platform',
@@ -18,7 +19,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body suppressHydrationWarning>
-        {children}
+        <AuthGuard>
+          {children}
+        </AuthGuard>
       </body>
     </html>
   );
