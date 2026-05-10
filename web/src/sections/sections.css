@@ -1,0 +1,380 @@
+/* Layout, Padding, and Margin for Main Sections */
+/* Designed to match the provided reference image */
+
+/* HERO SECTION */
+.hero-section {
+  width: 100%;
+  height: 100vh;
+  min-height: 100vh;
+  padding: 24px;
+  background-color: #000;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.hero-video-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 32px;
+  overflow: hidden;
+}
+
+/* CTA Button — pill shape */
+.cta-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #ffffff;
+  border-radius: 9999px;
+  padding: 5px 5px 5px 20px;
+  width: fit-content;
+  text-decoration: none;
+  transition: gap 0.3s ease;
+  cursor: pointer;
+}
+
+.cta-button:hover {
+  gap: 12px;
+}
+
+.cta-circle {
+  background-color: #000;
+  border-radius: 9999px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+}
+
+.cta-button:hover .cta-circle {
+  transform: scale(1.1);
+}
+
+/* ABOUT SECTION */
+.about-section {
+  width: 100%;
+  background-color: #000;
+  padding: 16px 24px;
+  box-sizing: border-box;
+}
+
+.about-inner-card {
+  width: 100%;
+  background-color: #101010;
+  border-radius: 24px;
+  padding: 100px 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.about-container {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.about-label {
+  color: #faf9f6;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  margin-bottom: 48px;
+}
+
+.about-heading {
+  font-size: clamp(1.875rem, 4.5vw, 4.5rem);
+  line-height: 0.95;
+  color: #f9f9f7;
+  max-width: 48rem;
+  margin: 0 auto 72px auto;
+}
+
+/* Italic serif style for "a self-taught director." words */
+.about-heading-italic {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.about-body {
+  max-width: 36rem;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.about-body-text {
+  color: #f8f8f8;
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+
+/* ===================================== */
+/* FEATURES SECTION                      */
+/* ===================================== */
+.features-section {
+  width: 100%;
+  min-height: 100vh;
+  background-color: #000;
+  padding: 80px 48px 100px;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.features-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 10;
+}
+
+/* Header: left-aligned to match reference */
+.features-header {
+  text-align: left;
+  margin-bottom: 40px;
+}
+
+.features-heading-text {
+  font-size: clamp(1.25rem, 2.5vw, 2.25rem);
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+/* Cards Grid: 4-column on desktop, tight gaps */
+.features-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+/* Video Card (Card 1) */
+.feature-video-card {
+  position: relative;
+  min-height: 360px;
+  border-radius: 16px;
+}
+
+.feature-video-text {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24px;
+}
+
+/* Info Cards (Cards 2-4) */
+.feature-info-card {
+  background-color: #161616;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.feature-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: cover;
+  margin-bottom: 20px;
+}
+
+.feature-card-number {
+  font-size: 11px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.feature-card-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #f8f8f8;
+  margin-bottom: 16px;
+}
+
+.feature-card-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feature-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #f8f8f8;
+  font-size: 13px;
+  margin-top: 20px;
+  text-decoration: none;
+  transition: gap 0.3s ease;
+}
+
+.feature-card-link:hover {
+  gap: 10px;
+}
+
+/* ===================================== */
+/* RESPONSIVE BREAKPOINTS                */
+/* ===================================== */
+
+/* Small screens (sm: 640px+) */
+@media (min-width: 640px) {
+  .cta-button {
+    padding: 6px 6px 6px 24px;
+  }
+
+  .cta-circle {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Tablet (md: 768px+) */
+@media (min-width: 768px) {
+  .about-inner-card {
+    padding: 120px 48px;
+  }
+
+  .about-body-text {
+    font-size: 0.875rem;
+  }
+
+  .features-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .feature-video-card {
+    min-height: 400px;
+  }
+
+  .feature-info-card {
+    padding: 28px;
+  }
+
+  .feature-card-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .feature-card-title {
+    font-size: 1.1rem;
+  }
+}
+
+/* Desktop (lg: 1024px+) */
+@media (min-width: 1024px) {
+  .about-inner-card {
+    padding: 140px 64px;
+    border-radius: 28px;
+  }
+
+  .about-body-text {
+    font-size: 1rem;
+  }
+
+  .features-section {
+    padding: 80px 48px 100px;
+  }
+
+  .features-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    height: 480px;
+  }
+
+  .feature-video-card {
+    min-height: unset;
+    height: 100%;
+  }
+
+  .feature-info-card {
+    padding: 28px;
+  }
+
+  .feature-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+  }
+
+  .feature-card-title {
+    font-size: 1.15rem;
+  }
+}
+
+/* Large Desktop (xl: 1280px+) */
+@media (min-width: 1280px) {
+  .features-section {
+    padding: 80px 56px 100px;
+  }
+
+  .features-grid {
+    gap: 8px;
+  }
+}
+
+/* Mobile-only adjustments */
+@media (max-width: 767px) {
+  .hero-section {
+    padding: 16px;
+  }
+
+  .hero-video-wrapper {
+    border-radius: 24px;
+  }
+
+  .about-section {
+    padding: 8px 12px;
+  }
+
+  .about-inner-card {
+    padding: 64px 16px;
+    border-radius: 18px;
+  }
+
+  .about-label {
+    margin-bottom: 28px;
+    font-size: 9px;
+  }
+
+  .about-heading {
+    margin-bottom: 40px;
+  }
+
+  .about-body-text {
+    font-size: 0.75rem;
+  }
+
+  .features-section {
+    padding: 60px 16px 80px;
+  }
+
+  .features-header {
+    margin-bottom: 28px;
+  }
+
+  .features-grid {
+    gap: 10px;
+  }
+
+  .feature-video-card {
+    min-height: 300px;
+  }
+
+  .feature-info-card {
+    padding: 20px;
+  }
+
+  .feature-card-icon {
+    width: 36px;
+    height: 36px;
+  }
+}

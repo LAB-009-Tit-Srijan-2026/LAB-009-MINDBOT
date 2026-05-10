@@ -15,6 +15,14 @@ Transcribe → Chunk → Embed → Retrieve → Learn.
 
 </div>
 
+## Multi-Project Architecture
+
+Athex consists of three main components:
+
+1.  **Athex Dashboard (`/app`)** — The core Next.js application where students ingest videos and use AI study tools.
+2.  **Athex Landing Page (`/web`)** — A high-performance, premium landing page built with Next.js and Framer Motion.
+3.  **Athex Backend (`/backend`)** — The FastAPI RAG server powering everything.
+
 ---
 
 ## What is Athex?
@@ -134,26 +142,19 @@ Fully client-side PDF generation (via jsPDF) with:
 
 ```
 axion/
-├── app/                        # Next.js frontend
+├── app/                        # Next.js Dashboard App
 │   ├── app/
-│   │   ├── page.tsx            # Main dashboard (sessions, chat, tools)
-│   │   ├── login/page.tsx      # Login page
-│   │   ├── signup/page.tsx     # Signup + OTP verification
-│   │   ├── settings/page.tsx   # Settings Control Center
-│   │   ├── forgot-password/    # Password reset flow
-│   │   ├── globals.css         # Aurora design system (CSS variables, glassmorphic)
-│   │   ├── lib/
-│   │   │   └── api.ts          # ✅ Centralized API config (single source of truth)
-│   │   └── components/
-│   │       └── StudyTools/
-│   │           ├── NotesViewer.tsx     # Notes + PDF export
-│   │           ├── QuizEngine.tsx      # Interactive quiz
-│   │           ├── FlashcardDeck.tsx   # Flip cards
-│   │           └── MockTest.tsx        # Mock exam
-│   ├── .env.local              # NEXT_PUBLIC_API_URL config
-│   └── tsconfig.json           # @/ path alias → ./app/*
+│   │   ├── page.tsx            # Main dashboard
+│   │   └── components/         # Study tools (Notes, Quiz, etc)
+│   └── lib/api.ts              # Centralized API config
 │
-└── backend/                    # FastAPI backend
+├── web/                        # Next.js Landing Page (Athex.xyz)
+│   ├── src/
+│   │   ├── app/page.tsx        # Landing page structure
+│   │   └── components/         # Hero, Stats, CTA components
+│   └── package.json            # Landing page deps (Framer Motion, Lenis)
+│
+└── backend/                    # FastAPI RAG Server
     ├── main.py                 # App entry point, CORS, lifespan
     ├── api/
     │   ├── routes.py           # All /api/v1/* endpoints

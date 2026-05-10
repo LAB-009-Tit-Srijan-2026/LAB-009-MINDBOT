@@ -1,0 +1,430 @@
+/* ===================================== */
+/* SHOWCASE SECTION — Section 4          */
+/* ===================================== */
+
+.showcase-section {
+  width: 100%;
+  background-color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 48px;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Background ambient glow */
+.showcase-bg-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 600px;
+  background: rgba(255, 87, 34, 0.05);
+  border-radius: 50%;
+  filter: blur(150px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Outer glass card wrapper */
+.showcase-wrapper {
+  width: 100%;
+  max-width: 1000px;
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 32px;
+  border-radius: 32px;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6);
+  position: relative;
+  z-index: 10;
+}
+
+/* Bento grid */
+.showcase-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+/* -------- LEFT COLUMN -------- */
+.showcase-left {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Top 2-stat row */
+.showcase-stats-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+/* Shared stat card */
+.showcase-stat-card {
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 190px;
+  transition: border-color 0.3s ease;
+  box-sizing: border-box;
+}
+
+.showcase-stat-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Icon + number row */
+.showcase-stat-top {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.showcase-stat-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.showcase-stat-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.showcase-stat-number {
+  font-size: clamp(1.75rem, 3.5vw, 2.25rem);
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  margin: 0;
+}
+
+.showcase-stat-number--orange { color: #fdfdfd; }
+.showcase-stat-number--amber  { color: #fbfaf9; }
+
+.showcase-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #d1d5db;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.showcase-stat-desc {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.6;
+  margin: 0;
+  margin-top: 20px;
+  transition: color 0.3s ease;
+}
+
+.showcase-stat-card:hover .showcase-stat-desc {
+  color: #9ca3af;
+}
+
+/* CTA Card (big text card) */
+.showcase-cta-card {
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  padding: 36px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  min-height: 280px;
+  transition: border-color 0.3s ease;
+  box-sizing: border-box;
+  flex: 1;
+}
+
+.showcase-cta-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Inner glow blob */
+.showcase-cta-glow {
+  position: absolute;
+  top: -96px;
+  right: -48px;
+  width: 192px;
+  height: 192px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 50%;
+  filter: blur(48px);
+  pointer-events: none;
+}
+
+.showcase-cta-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.showcase-cta-heading {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  font-weight: 300;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+
+.showcase-cta-heading-2 {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  font-weight: 300;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+/* Stacked avatars */
+.showcase-avatars {
+  display: flex;
+  margin: 0 4px;
+}
+
+.showcase-avatars img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #0a0a0a;
+  object-fit: cover;
+}
+
+.showcase-avatars img + img {
+  margin-left: -10px;
+}
+
+/* Small arrow pill button */
+.showcase-arrow-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 80px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #ff5722;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.25s ease;
+}
+
+.showcase-arrow-btn:hover {
+  background-color: rgba(255, 87, 34, 0.1);
+}
+
+.showcase-arrow-btn-line {
+  width: 22px;
+  height: 1px;
+  background-color: #ff5722;
+}
+
+.showcase-arrow-btn-icon {
+  width: 12px;
+  height: 12px;
+  color: #fff;
+}
+
+/* -------- RIGHT COLUMN (Video Card) -------- */
+.showcase-video-card {
+  position: relative;
+  background: rgba(10, 10, 10, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  overflow: hidden;
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.3s ease;
+}
+
+.showcase-video-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Absolute bg image */
+.showcase-video-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.showcase-video-bg img,
+.showcase-video-bg video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.8;
+  transition: transform 0.7s ease;
+}
+
+.showcase-video-card:hover .showcase-video-bg img,
+.showcase-video-card:hover .showcase-video-bg video {
+  transform: scale(1.03);
+}
+
+/* Vignette overlays */
+.showcase-video-vignette {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 50%, rgba(0,0,0,0.8) 100%);
+}
+
+.showcase-video-tint {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Center icon */
+.showcase-video-center-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+.showcase-video-center-icon svg {
+  width: 48px;
+  height: 48px;
+  color: rgba(255, 255, 255, 0.45);
+  transition: color 0.3s ease;
+  filter: drop-shadow(0 4px 24px rgba(0,0,0,0.8));
+}
+
+.showcase-video-card:hover .showcase-video-center-icon svg {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Text top area */
+.showcase-video-top {
+  position: relative;
+  padding: 32px;
+  z-index: 2;
+  flex: 1;
+}
+
+.showcase-video-title {
+  font-size: 1.875rem;
+  font-weight: 300;
+  color: #fff;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+/* Bottom action area */
+.showcase-video-bottom {
+  position: relative;
+  padding: 24px 28px 32px;
+  z-index: 2;
+}
+
+.showcase-get-in-touch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 87, 34, 0.5);
+  color: #ff5722;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+
+.showcase-get-in-touch:hover {
+  background-color: rgba(255, 87, 34, 0.1);
+  border-color: #ff5722;
+}
+
+.showcase-get-in-touch svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ===================================== */
+/* RESPONSIVE                            */
+/* ===================================== */
+
+@media (min-width: 640px) {
+  .showcase-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .showcase-grid {
+    grid-template-columns: 7fr 5fr;
+  }
+
+  .showcase-video-card {
+    min-height: unset;
+    height: 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  .showcase-section {
+    padding: 72px 16px;
+  }
+
+  .showcase-wrapper {
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .showcase-stat-card {
+    padding: 22px;
+    min-height: 160px;
+  }
+
+  .showcase-cta-card {
+    padding: 24px;
+    min-height: 220px;
+  }
+
+  .showcase-video-top {
+    padding: 24px;
+  }
+
+  .showcase-video-bottom {
+    padding: 16px 20px 24px;
+  }
+}
