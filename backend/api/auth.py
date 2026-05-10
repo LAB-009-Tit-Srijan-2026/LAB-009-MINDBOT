@@ -265,7 +265,7 @@ async def google_callback(code: str, db=Depends(get_db)):
         token_data = token_res.json()
         if "error" in token_data:
             logger.error(f"Google token error: {token_data}")
-            return RedirectResponse("http://localhost:3000/login?error=google_auth_failed")
+            return RedirectResponse("https://app.athex.xyz/login?error=google_auth_failed")
 
         # 2. Get user info
         user_info_res = await client.get(
@@ -275,7 +275,7 @@ async def google_callback(code: str, db=Depends(get_db)):
         user_info = user_info_res.json()
         email = user_info.get("email")
         if not email:
-            return RedirectResponse("http://localhost:3000/login?error=email_not_provided")
+            return RedirectResponse("https://app.athex.xyz/login?error=email_not_provided")
 
     # 3. Check/Create user
     async with db.execute("SELECT id FROM users WHERE email = ?", (email,)) as cursor:
@@ -296,4 +296,4 @@ async def google_callback(code: str, db=Depends(get_db)):
 
     # 4. Issue JWT and redirect to frontend with token and email
     access_token = create_access_token(data={"sub": user_id, "email": email})
-    return RedirectResponse(f"http://localhost:3000/login?token={access_token}&email={email}")
+    return RedirectResponse(f"https://app.athex.xyz/login?token={access_token}&email={email}")
