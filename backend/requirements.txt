@@ -1,7 +1,7 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
-python-multipart>=0.0.20
-deepgram-sdk>=3.7.0
+python-multipart>=0.0.27
+deepgram-sdk>=7.1.0
 voyageai>=0.2.1
 pinecone>=5.0.0
 supabase>=2.0.0
@@ -15,3 +15,4 @@ aiosqlite>=0.19.0
 bcrypt>=4.0.0
 pyjwt>=2.8.0
 aiosmtplib>=3.0.0
+youtube-transcript-api>=0.6.0
