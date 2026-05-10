@@ -110,7 +110,7 @@ export default function Footer() {
                 150+ neural parameters per search.
               </p>
               <OriginButton
-                onClick={() => window.location.href = 'http://localhost:3000/'}
+                onClick={() => window.location.href = 'https://app.athex.xyz'}
                 bg="#ffffff"
                 hoverBg="#111111"
                 color="#000000"
@@ -129,8 +129,8 @@ export default function Footer() {
           <div className="footer-company">
             <div className="footer-logo-wrapper">
               <BrainCircuit className="footer-logo-icon" />
-              <span className="footer-logo-text ]">
-             MINDBOT
+              <span className="footer-logo-text">
+             ATHEX
               </span>
             </div>
 
@@ -151,7 +151,7 @@ export default function Footer() {
               <div>
                 <p className="footer-contact-label">Email</p>
                 <p className="footer-contact-value">
-                  support@mindbot.ai
+                  support@athex.xyz
                 </p>
               </div>
             </div>
@@ -182,7 +182,7 @@ export default function Footer() {
 
         {/* Bottom Bar */}
         <div className="footer-bottom-bar">
-          <p>© 2026 Mindbot. All rights reserved.</p>
+          <p>© 2026 Athex. All rights reserved.</p>
         </div>
       </div>
     </footer>

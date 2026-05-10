@@ -8,7 +8,7 @@
 // ── Base URL ──
 // Reads from .env.local first, falls back to localhost for development.
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+  process.env.NEXT_PUBLIC_API_URL ?? "https://api.athex.xyz/api/v1";
 
 // ── Convenience Auth Helpers ──
 export const getAuthHeaders = (): Record<string, string> => {

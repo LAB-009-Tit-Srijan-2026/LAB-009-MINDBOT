@@ -47,11 +47,11 @@ app = FastAPI(
 )
 
 # ── Allowed origins ──
-# Add your production frontend URL here when deploying.
 ALLOWED_ORIGINS = [
-    "http://localhost:3000",   # Next.js dev server
+    "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:3001",   # fallback port
+    "https://athex.xyz",
+    "https://app.athex.xyz",
 ]
 
 # ── CORS Middleware ──

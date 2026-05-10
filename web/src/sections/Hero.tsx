@@ -7,7 +7,7 @@ import "./sections.css";
 const navItems = [
   { label: "Features", href: "#features" },
   { label: "Github", href: "https://github.com/LAB-009-Tit-Srijan-2026/LAB-009-MINDBOT.git", external: true },
-  { label: "Dashboard", href: "http://localhost:3000/" },
+  { label: "Dashboard", href: "https://app.athex.xyz" },
   { label: "Pricing", href: "#" },
   { label: "Inquiries", href: "#" },
 ];
@@ -96,7 +96,7 @@ export default function Hero() {
               </motion.p>
 
               <OriginButton
-                  href="http://localhost:3000/"
+                  href="https://app.athex.xyz"
                   bg="#ffffff"
                   hoverBg="#111111"
                   color="#000000"
