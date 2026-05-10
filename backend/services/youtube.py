@@ -121,9 +121,50 @@ async def get_youtube_transcript(url: str) -> Tuple[List[dict], str]:
     """
     Asynchronously fetch YouTube transcript entries and video ID.
     Returns (utterances_list, youtube_video_id).
+    
+    If official captions are blocked or missing, falls back to audio download + Deepgram.
     """
     video_id = _extract_video_id(url)
-    entries = await asyncio.to_thread(_fetch_transcript_sync, video_id)
-    utterances = transcript_entries_to_utterances(entries)
-    logger.info("[%s] Extracted %d utterances from YouTube transcript.", video_id, len(utterances))
-    return utterances, video_id
+    
+    try:
+        entries = await asyncio.to_thread(_fetch_transcript_sync, video_id)
+        utterances = transcript_entries_to_utterances(entries)
+        logger.info("[%s] Extracted %d utterances from YouTube transcript.", video_id, len(utterances))
+        return utterances, video_id
+    except Exception as e:
+        logger.warning("[%s] YouTube transcript API failed, attempting fallback: %s", video_id, e)
+        
+        # Fallback: Download audio and transcribe with Deepgram
+        from services.yt_dlp_service import download_youtube_audio
+        from services.transcription import transcribe_audio
+        import os
+        
+        audio_path = None
+        try:
+            audio_path = await download_youtube_audio(url)
+            with open(audio_path, "rb") as f:
+                audio_bytes = f.read()
+            
+            # Use 'audio/*' or just the extension to let Deepgram detect the format
+            transcript_data = await transcribe_audio(audio_bytes, "audio/wav") # Deepgram usually handles wav/mp3/m4a automatically if not specified
+            utterances = transcript_data.get("results", {}).get("utterances", [])
+            
+            if not utterances:
+                raise RuntimeError("Deepgram returned no utterances during fallback.")
+            
+            # Map Deepgram format to internal format if needed
+            # (transcribe_audio output is already utterance-compatible with internal format)
+            # Actually, Deepgram 'utterances' have {'transcript', 'start', 'end'} which is exactly what we want.
+            
+            logger.info("[%s] Fallback successful. Extracted %d utterances via Deepgram.", video_id, len(utterances))
+            return utterances, video_id
+            
+        except Exception as fallback_err:
+            logger.error("[%s] Fallback also failed: %s", video_id, fallback_err)
+            raise RuntimeError(f"Could not retrieve transcript via any method. Original error: {e}")
+        finally:
+            if audio_path and os.path.exists(audio_path):
+                try:
+                    os.remove(audio_path)
+                except Exception as cleanup_err:
+                    logger.warning("[%s] Failed to delete temp audio file: %s", video_id, cleanup_err)

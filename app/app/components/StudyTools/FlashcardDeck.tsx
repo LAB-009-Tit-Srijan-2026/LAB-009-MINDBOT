@@ -1,101 +1,80 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Loader2, ChevronLeft, ChevronRight, RotateCw } from 'lucide-react';
-import './FlashcardDeck.css';
+import { Loader2, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 
-const API_BASE = "http://localhost:8000/api/v1";
-
-type Flashcard = {
-  front: string;
-  back: string;
-};
+import { API_BASE } from '@/lib/api';
+type Card = { front: string; back: string };
 
 export default function FlashcardDeck({ videoId }: { videoId: string }) {
-  const [cards, setCards] = useState<Flashcard[]>([]);
+  const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
+  const [idx, setIdx] = useState(0);
+  const [flipped, setFlipped] = useState(false);
 
   useEffect(() => {
-    async function fetchCards() {
+    async function fetch_() {
       try {
         const token = localStorage.getItem("axion_jwt");
         const res = await fetch(`${API_BASE}/study-material?video_id=${videoId}&material_type=flashcards`, {
           headers: { "Authorization": `Bearer ${token}` }
         });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setCards(data);
-        } else {
-          throw new Error("Invalid format received from AI.");
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({ detail: "Error." }));
+          throw new Error(d.detail || "Failed.");
         }
-      } catch (err: any) {
-        setError(err.message || "Failed to load flashcards.");
-      } finally {
-        setLoading(false);
-      }
+        const data = await res.json();
+        if (Array.isArray(data)) setCards(data);
+        else throw new Error("Invalid format.");
+      } catch (err: any) { setError(err.message); }
+      finally { setLoading(false); }
     }
-    fetchCards();
+    fetch_();
   }, [videoId]);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flexDirection: 'column', color: 'var(--text-muted)' }}>
-        <Loader2 className="processing-spinner" size={32} />
-        <p style={{ marginTop: '16px' }}>Generating AI Flashcards...</p>
+  const go = (dir: 1|-1) => {
+    setFlipped(false);
+    setTimeout(() => setIdx(i => Math.max(0, Math.min(cards.length-1, i+dir))), 180);
+  };
+
+  if (loading) return (
+    <div className="state-center">
+      <Loader2 size={22} className="spin" color="var(--accent)"/>
+      <p className="state-title">Building flashcards…</p>
+    </div>
+  );
+
+  if (error) return (
+    <div style={{padding:24}}>
+      <div style={{background:'var(--card)',border:'1px solid var(--border)',borderLeft:'3px solid var(--accent)',borderRadius:10,padding:'16px 18px'}}>
+        <p style={{fontWeight:700,fontSize:'0.8rem',textTransform:'uppercase',letterSpacing:'0.05em',color:'var(--text-2)',marginBottom:6}}>Notice</p>
+        <p style={{fontSize:'0.875rem',color:'var(--text-2)',lineHeight:1.6}}>{error}</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (error) {
-    return <div style={{ color: 'var(--accent-red)', padding: '24px' }}>{error}</div>;
-  }
-
-  if (cards.length === 0) return null;
-
-  const currentCard = cards[currentIndex];
-
-  const handleNext = () => {
-    setIsFlipped(false);
-    setTimeout(() => setCurrentIndex((prev) => Math.min(cards.length - 1, prev + 1)), 150);
-  };
-
-  const handlePrev = () => {
-    setIsFlipped(false);
-    setTimeout(() => setCurrentIndex((prev) => Math.max(0, prev - 1)), 150);
-  };
+  if (!cards.length) return <div className="state-center"><p className="state-sub">No cards generated.</p></div>;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '24px' }}>
-      
-      <div className="flashcard-progress">
-        Card {currentIndex + 1} of {cards.length}
-      </div>
+    <div className="fc-shell">
+      <span className="fc-counter">{idx+1} / {cards.length}</span>
 
-      <div className="flashcard-scene" onClick={() => setIsFlipped(!isFlipped)}>
-        <div className={`flashcard-object ${isFlipped ? 'is-flipped' : ''}`}>
-          <div className="flashcard-face flashcard-front">
-            <h3>{currentCard.front}</h3>
-            <div className="flip-hint">
-              <RotateCw size={16} /> Click to flip
-            </div>
+      <div className="fc-scene" onClick={()=>setFlipped(f=>!f)}>
+        <div className={`fc-obj${flipped?' flipped':''}`}>
+          <div className="fc-face fc-front">
+            <p className="fc-q">{cards[idx].front}</p>
+            <div className="fc-hint"><RotateCcw size={12}/> tap to flip</div>
           </div>
-          <div className="flashcard-face flashcard-back">
-            <p>{currentCard.back}</p>
+          <div className="fc-face fc-back">
+            <p className="fc-a">{cards[idx].back}</p>
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '16px', marginTop: '32px' }}>
-        <button className="pill-btn" onClick={handlePrev} disabled={currentIndex === 0}>
-          <ChevronLeft size={20} />
-        </button>
-        <button className="pill-btn" onClick={handleNext} disabled={currentIndex === cards.length - 1}>
-          <ChevronRight size={20} />
-        </button>
+      <div style={{display:'flex',gap:10}}>
+        <button className="btn" onClick={()=>go(-1)} disabled={idx===0}><ChevronLeft size={16}/> Prev</button>
+        <button className="btn btn-primary" onClick={()=>go(1)} disabled={idx===cards.length-1}>Next <ChevronRight size={16}/></button>
       </div>
     </div>
   );

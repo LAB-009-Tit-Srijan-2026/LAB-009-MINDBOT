@@ -1,5 +1,5 @@
 """
-main.py — FastAPI application entry point for Axion.
+main.py — FastAPI application entry point for Athex.
 
 Configures:
   • CORS middleware (all origins — hackathon mode)
@@ -29,15 +29,15 @@ logger = logging.getLogger("omega")
 # ── Lifespan (startup / shutdown hooks) ──
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("🚀 Axion backend starting…")
+    logger.info("🚀 Athex backend starting…")
     await init_db()
     yield
-    logger.info("👋 Axion backend shutting down.")
+    logger.info("👋 Athex backend shutting down.")
 
 
 # ── Application ──
 app = FastAPI(
-    title="Axion — LMS Video Companion",
+    title="Athex — LMS Video Companion",
     description=(
         "AI-Powered Retrieval-Augmented Generation backend for educational "
         "video analysis.  Transcribe → Chunk → Embed → Retrieve → Stream."
@@ -46,10 +46,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS — allow all origins (hackathon) ──
+# ── Allowed origins ──
+# Add your production frontend URL here when deploying.
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",   # Next.js dev server
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",   # fallback port
+]
+
+# ── CORS Middleware ──
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

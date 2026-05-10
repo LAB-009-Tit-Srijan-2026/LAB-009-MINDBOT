@@ -2,67 +2,311 @@
 
 import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Download, FileText } from 'lucide-react';
 
-const API_BASE = "http://localhost:8000/api/v1";
+import { API_BASE } from '@/lib/api';
+
+// Client-side PDF generation from markdown content
+async function generateAndDownloadPDF(content: string, videoId: string) {
+  const { jsPDF } = await import('jspdf');
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  const pageWidth  = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginL  = 20;
+  const marginR  = 20;
+  const contentW = pageWidth - marginL - marginR;
+  let y = 0;
+
+  // ── Draw branded header on current page ──
+  const drawHeader = () => {
+    // Accent top bar
+    doc.setFillColor(40, 40, 40);
+    doc.rect(0, 0, pageWidth, 16, 'F');
+    doc.setFillColor(212, 255, 0);
+    doc.rect(0, 0, 4, 16, 'F');
+
+    // "Athex" title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(212, 255, 0);
+    doc.text('Athex', 10, 10.5);
+
+    // Subtitle
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(200, 200, 200);
+    doc.text('AI-Generated Study Notes', pageWidth - marginR, 10.5, { align: 'right' });
+
+    // White body background
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 16, pageWidth, pageHeight - 16, 'F');
+
+    y = 28;
+  };
+
+  drawHeader();
+
+  // ── Check if we need a new page ──
+  const checkBreak = (needed: number) => {
+    if (y + needed > pageHeight - 16) {
+      doc.addPage();
+      drawHeader();
+    }
+  };
+
+  // ── Parse and render each line ──
+  const lines = content.split('\n');
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+
+    if (!line.trim()) {
+      y += 3;
+      continue;
+    }
+
+    if (line.startsWith('# ')) {
+      const text = line.slice(2).trim();
+      checkBreak(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.setTextColor(15, 15, 15);
+      const wrapped = doc.splitTextToSize(text, contentW);
+      doc.text(wrapped, marginL, y);
+      y += wrapped.length * 8;
+      // Accent underline
+      doc.setDrawColor(212, 255, 0);
+      doc.setLineWidth(1);
+      doc.line(marginL, y + 1, marginL + contentW, y + 1);
+      y += 7;
+
+    } else if (line.startsWith('## ')) {
+      const text = line.slice(3).trim();
+      checkBreak(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(30, 30, 30);
+      const wrapped = doc.splitTextToSize(text, contentW);
+      doc.text(wrapped, marginL, y);
+      y += wrapped.length * 7 + 4;
+
+    } else if (line.startsWith('### ')) {
+      const text = line.slice(4).trim();
+      checkBreak(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(50, 50, 50);
+      const wrapped = doc.splitTextToSize(text, contentW);
+      doc.text(wrapped, marginL, y);
+      y += wrapped.length * 6 + 3;
+
+    } else if (/^[-*] /.test(line)) {
+      const text = '•  ' + line.slice(2).trim().replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+      const wrapped = doc.splitTextToSize(text, contentW - 6);
+      checkBreak(wrapped.length * 5.5 + 2);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(40, 40, 40);
+      doc.text(wrapped, marginL + 4, y);
+      y += wrapped.length * 5.5 + 2;
+
+    } else if (/^\d+\. /.test(line)) {
+      const text = line.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+      const wrapped = doc.splitTextToSize(text, contentW - 6);
+      checkBreak(wrapped.length * 5.5 + 2);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(40, 40, 40);
+      doc.text(wrapped, marginL + 4, y);
+      y += wrapped.length * 5.5 + 2;
+
+    } else if (/^-{3,}$/.test(line.trim())) {
+      checkBreak(6);
+      doc.setDrawColor(210, 210, 210);
+      doc.setLineWidth(0.3);
+      doc.line(marginL, y, marginL + contentW, y);
+      y += 5;
+
+    } else {
+      const cleanLine = line
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/\*(.*?)\*/g, '$1')
+        .replace(/`(.*?)`/g, '$1');
+      const wrapped = doc.splitTextToSize(cleanLine, contentW);
+      checkBreak(wrapped.length * 5.5 + 2);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(55, 55, 55);
+      doc.text(wrapped, marginL, y);
+      y += wrapped.length * 5.5 + 3;
+    }
+  }
+
+  // ── Footer page numbers ──
+  const totalPages = (doc.internal as any).getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(0, pageHeight - 12, pageWidth, 12, 'F');
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(130, 130, 130);
+    doc.text(
+      `Generated by Athex AI  |  Page ${i} of ${totalPages}`,
+      pageWidth / 2,
+      pageHeight - 4.5,
+      { align: 'center' }
+    );
+  }
+
+  doc.save(`Athex_Notes_${videoId.slice(0, 8)}.pdf`);
+}
+
 
 export default function NotesViewer({ videoId }: { videoId: string }) {
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
+    if (!videoId) return;
+    let cancelled = false;
+
     async function fetchNotes() {
+      setLoading(true);
+      setError('');
+      setContent(null);
       try {
-        const token = localStorage.getItem("axion_jwt");
-        const res = await fetch(`${API_BASE}/study-material?video_id=${videoId}&material_type=notes`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-        setContent(data.content);
+        const token = localStorage.getItem('axion_jwt');
+        const res = await fetch(
+          `${API_BASE}/study-material?video_id=${videoId}&material_type=notes`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const raw = await res.text();
+        if (!res.ok) {
+          let detail = 'Failed to load notes.';
+          try { detail = JSON.parse(raw).detail || detail; } catch {}
+          if (!cancelled) setError(detail);
+          return;
+        }
+        let parsed: any;
+        try { parsed = JSON.parse(raw); } catch {
+          if (!cancelled) setContent(raw);
+          return;
+        }
+        const text: string =
+          typeof parsed === 'string'
+            ? parsed
+            : parsed?.content ?? JSON.stringify(parsed, null, 2);
+        if (!cancelled) setContent(text);
       } catch (err: any) {
-        setError(err.message || "Failed to load notes.");
+        if (!cancelled) setError(err.message || 'Network error.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
+
     fetchNotes();
+    return () => { cancelled = true; };
   }, [videoId]);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flexDirection: 'column', color: 'var(--text-muted)' }}>
-        <Loader2 className="processing-spinner" size={32} />
-        <p style={{ marginTop: '16px' }}>Generating AI Notes...</p>
-      </div>
-    );
-  }
+  const handleDownloadPDF = async () => {
+    if (!content || downloading) return;
+    setDownloading(true);
+    try {
+      await generateAndDownloadPDF(content, videoId);
+    } catch (err: any) {
+      console.error('PDF generation failed:', err);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
-  if (error) {
-    return <div style={{ color: 'var(--accent-red)', padding: '24px' }}>{error}</div>;
-  }
+  if (loading) return (
+    <div className="state-center" style={{ minHeight: 300 }}>
+      <Loader2 size={28} className="spin" color="var(--accent)" />
+      <p className="state-title" style={{ marginTop: 16 }}>Generating notes…</p>
+      <p className="state-sub">This may take a moment for longer videos.</p>
+    </div>
+  );
+
+  if (error) return (
+    <div style={{ padding: 24 }}>
+      <div className="error-card-aurora">
+        <p className="error-label">Notice</p>
+        <p className="error-text">{error}</p>
+      </div>
+    </div>
+  );
+
+  if (!content) return (
+    <div className="state-center">
+      <p className="state-sub">No notes content found.</p>
+    </div>
+  );
 
   return (
-    <div style={{ padding: '24px', overflowY: 'auto', height: '100%', color: 'var(--text-light)', lineHeight: 1.6 }}>
-      <ReactMarkdown
-        components={{
-          h1: ({node, ...props}) => <h1 style={{ color: '#fff', fontSize: '1.8rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', marginBottom: '16px' }} {...props} />,
-          h2: ({node, ...props}) => <h2 style={{ color: '#fff', fontSize: '1.4rem', marginTop: '24px', marginBottom: '12px' }} {...props} />,
-          h3: ({node, ...props}) => <h3 style={{ color: '#fff', fontSize: '1.1rem', marginTop: '16px', marginBottom: '8px' }} {...props} />,
-          ul: ({node, ...props}) => <ul style={{ paddingLeft: '24px', marginBottom: '16px' }} {...props} />,
-          li: ({node, ...props}) => <li style={{ marginBottom: '8px' }} {...props} />,
-          p: ({node, ...props}) => <p style={{ marginBottom: '16px' }} {...props} />,
-          strong: ({node, ...props}) => <strong style={{ color: 'var(--accent-blue)' }} {...props} />,
-          blockquote: ({node, ...props}) => (
-            <blockquote style={{ borderLeft: '4px solid var(--accent-red)', paddingLeft: '16px', margin: '16px 0', color: 'var(--text-muted)', fontStyle: 'italic' }} {...props} />
-          ),
-        }}
-      >
-        {content || ""}
-      </ReactMarkdown>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* ── Toolbar ── */}
+      <div style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '12px 24px',
+        background: 'rgba(10, 10, 10, 0.8)',
+        backdropFilter: 'blur(16px)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: 'rgba(212, 255, 0, 0.1)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            <FileText size={16} color="var(--accent)" />
+          </div>
+          <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-1)' }}>
+            Generated Notes
+          </span>
+        </div>
+
+        <button
+          onClick={handleDownloadPDF}
+          disabled={downloading}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 20px',
+            fontSize: '0.85rem',
+            fontWeight: 700,
+            background: downloading ? 'rgba(255,255,255,0.05)' : 'var(--accent)',
+            color: downloading ? 'var(--text-3)' : '#000',
+            border: 'none',
+            borderRadius: '100px',
+            cursor: downloading ? 'not-allowed' : 'pointer',
+            transition: 'all 0.2s ease',
+            boxShadow: downloading ? 'none' : '0 4px 16px rgba(212, 255, 0, 0.25)',
+          }}
+        >
+          {downloading ? (
+            <><Loader2 size={14} className="spin" /> Exporting...</>
+          ) : (
+            <><Download size={14} /> Download PDF</>
+          )}
+        </button>
+      </div>
+
+      {/* ── Notes Body ── */}
+      <div className="notes-body" style={{ overflowY: 'auto', flex: 1, padding: '24px 28px 60px' }}>
+        <ReactMarkdown>{content}</ReactMarkdown>
+      </div>
     </div>
   );
 }

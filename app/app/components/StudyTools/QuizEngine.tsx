@@ -1,169 +1,200 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Trophy, ArrowRight, RotateCcw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
-const API_BASE = "http://localhost:8000/api/v1";
+import { API_BASE } from '@/lib/api';
 
-type QuizQuestion = {
-  question: string;
-  options: string[];
-  correct_answer: string;
-  explanation: string;
-};
+type Q = { question: string; options: string[]; correct_answer: string; explanation: string };
 
 export default function QuizEngine({ videoId }: { videoId: string }) {
-  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
+  const [questions, setQuestions] = useState<Q[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [idx, setIdx] = useState(0);
+  const [selected, setSelected] = useState<string|null>(null);
+  const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState(0);
 
   useEffect(() => {
-    async function fetchQuiz() {
+    async function fetch_() {
       try {
         const token = localStorage.getItem("axion_jwt");
         const res = await fetch(`${API_BASE}/study-material?video_id=${videoId}&material_type=quiz`, {
           headers: { "Authorization": `Bearer ${token}` }
         });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setQuestions(data);
-        } else {
-          throw new Error("Invalid format received from AI.");
+        const raw = await res.text();
+        if (!res.ok) {
+          let detail = "Failed to load quiz.";
+          try { detail = JSON.parse(raw).detail || detail; } catch {}
+          throw new Error(detail);
         }
-      } catch (err: any) {
-        setError(err.message || "Failed to load quiz.");
-      } finally {
-        setLoading(false);
-      }
+        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const data = JSON.parse(cleaned);
+        const arr = Array.isArray(data) ? data : (data.questions ?? data.quiz ?? []);
+        setQuestions(arr);
+      } catch (err: any) { setError(err.message); }
+      finally { setLoading(false); }
     }
-    fetchQuiz();
+    fetch_();
   }, [videoId]);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flexDirection: 'column', color: 'var(--text-muted)' }}>
-        <Loader2 className="processing-spinner" size={32} />
-        <p style={{ marginTop: '16px' }}>Generating AI Quiz...</p>
+  if (loading) return (
+    <div className="state-center" style={{ minHeight: '300px' }}>
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+      >
+        <Loader2 size={32} color="var(--accent)"/>
+      </motion.div>
+      <p className="state-title" style={{ marginTop: 16 }}>Building your assessment…</p>
+      <p className="state-sub">AI is analyzing the transcript for key concepts.</p>
+    </div>
+  );
+
+  if (error) return (
+    <div style={{padding:24}}>
+      <div className="error-card-aurora">
+        <p className="error-label">Notice</p>
+        <p className="error-text">{error}</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (error) {
-    return <div style={{ color: 'var(--accent-red)', padding: '24px' }}>{error}</div>;
-  }
+  if (questions.length === 0) return <div className="state-center"><p className="state-sub">No questions available.</p></div>;
 
-  if (questions.length === 0) return null;
-
-  // Final Results Screen
-  if (currentIndex >= questions.length) {
+  if (idx >= questions.length) {
+    const percent = Math.round((score / questions.length) * 100);
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '24px', textAlign: 'center' }}>
-        <CheckCircle2 size={64} style={{ color: 'var(--accent-blue)', marginBottom: '24px' }} />
-        <h2 style={{ fontSize: '2rem', color: '#fff', marginBottom: '8px' }}>Quiz Complete!</h2>
-        <p style={{ fontSize: '1.2rem', color: 'var(--text-light)' }}>
-          You scored <strong style={{ color: '#fff' }}>{score}</strong> out of {questions.length}.
-        </p>
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="state-center" 
+        style={{ minHeight: '400px' }}
+      >
+        <div className="trophy-container">
+          <Trophy size={48} color="var(--accent)"/>
+          <div className="trophy-glow" />
+        </div>
+        <p className="state-title" style={{ fontSize: '1.5rem', marginBottom: 4 }}>Quiz Complete!</p>
+        <div className="score-display">
+          <span className="score-number">{percent}%</span>
+          <span className="score-sub">{score} / {questions.length} correct</span>
+        </div>
         <button 
-          className="pill-btn" 
-          onClick={() => { setCurrentIndex(0); setScore(0); setIsSubmitted(false); setSelectedOption(null); }}
-          style={{ marginTop: '32px' }}
+          className="btn-pill-primary" 
+          style={{ marginTop: 24 }}
+          onClick={() => { setIdx(0); setScore(0); setSubmitted(false); setSelected(null); }}
         >
-          Retake Quiz
+          <RotateCcw size={16} /> Retake Assessment
         </button>
-      </div>
+      </motion.div>
     );
   }
 
-  const currentQ = questions[currentIndex];
-
-  const handleSubmit = () => {
-    if (!selectedOption) return;
-    setIsSubmitted(true);
-    if (selectedOption === currentQ.correct_answer) {
-      setScore(s => s + 1);
-    }
-  };
-
-  const handleNext = () => {
-    setSelectedOption(null);
-    setIsSubmitted(false);
-    setCurrentIndex(i => i + 1);
-  };
+  const q = questions[idx];
+  const progress = ((idx) / questions.length) * 100;
 
   return (
-    <div style={{ padding: '24px', height: '100%', overflowY: 'auto' }}>
-      <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '24px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>
-        Question {currentIndex + 1} of {questions.length}
-      </div>
-
-      <h3 style={{ color: '#fff', fontSize: '1.3rem', lineHeight: 1.5, marginBottom: '32px' }}>
-        {currentQ.question}
-      </h3>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {currentQ.options.map((opt, i) => {
-          let bg = 'rgba(255,255,255,0.05)';
-          let border = '1px solid var(--border-color)';
-          let icon = null;
-
-          if (isSubmitted) {
-            if (opt === currentQ.correct_answer) {
-              bg = 'rgba(16, 185, 129, 0.1)';
-              border = '1px solid #10B981';
-              icon = <CheckCircle2 size={18} color="#10B981" />;
-            } else if (opt === selectedOption) {
-              bg = 'rgba(239, 68, 68, 0.1)';
-              border = '1px solid var(--accent-red)';
-              icon = <XCircle size={18} color="var(--accent-red)" />;
-            }
-          } else if (opt === selectedOption) {
-            bg = 'rgba(255,255,255,0.1)';
-            border = '1px solid #fff';
-          }
-
-          return (
-            <button
-              key={i}
-              disabled={isSubmitted}
-              onClick={() => setSelectedOption(opt)}
-              style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '16px 24px', borderRadius: '12px', background: bg, border: border,
-                color: 'var(--text-light)', fontSize: '1rem', textAlign: 'left', cursor: isSubmitted ? 'default' : 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {opt}
-              {icon}
-            </button>
-          );
-        })}
-      </div>
-
-      {isSubmitted && (
-        <div style={{ marginTop: '32px', padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '12px', borderLeft: '4px solid var(--accent-blue)' }}>
-          <strong style={{ color: '#fff', display: 'block', marginBottom: '8px' }}>Explanation:</strong>
-          <span style={{ color: 'var(--text-light)', lineHeight: 1.5 }}>{currentQ.explanation}</span>
+    <div className="quiz-container-modern">
+      {/* Progress Header */}
+      <div className="quiz-header">
+        <div className="quiz-progress-info">
+          <span className="quiz-step-label">Question {idx + 1} of {questions.length}</span>
+          <span className="quiz-score-live">{Math.round(score / (idx || 1) * 100)}% Accuracy</span>
         </div>
-      )}
+        <div className="quiz-progress-bar">
+          <motion.div 
+            className="quiz-progress-fill" 
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
 
-      <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'flex-end' }}>
-        {!isSubmitted ? (
-          <button className="pill-btn" onClick={handleSubmit} disabled={!selectedOption}>
-            Submit Answer
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={idx}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          transition={{ duration: 0.3 }}
+          className="quiz-content"
+        >
+          <h3 className="quiz-question-text">{q.question}</h3>
+
+          <div className="quiz-options-grid">
+            {q.options.map((opt, i) => {
+              let state: 'idle' | 'selected' | 'correct' | 'wrong' = 'idle';
+              if (submitted) {
+                if (opt === q.correct_answer) state = 'correct';
+                else if (opt === selected) state = 'wrong';
+              } else if (opt === selected) {
+                state = 'selected';
+              }
+
+              return (
+                <button
+                  key={i}
+                  className={`quiz-option-card ${state}`}
+                  disabled={submitted}
+                  onClick={() => setSelected(opt)}
+                >
+                  <div className="opt-index">{String.fromCharCode(65 + i)}</div>
+                  <span className="opt-text">{opt}</span>
+                  {state === 'correct' && <CheckCircle2 size={18} className="opt-icon" />}
+                  {state === 'wrong' && <XCircle size={18} className="opt-icon" />}
+                </button>
+              );
+            })}
+          </div>
+
+          {submitted && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="quiz-explanation-box"
+            >
+              <div className="exp-header">
+                <Brain size={14} />
+                <span>Expert Explanation</span>
+              </div>
+              <p>{q.explanation}</p>
+            </motion.div>
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      <div className="quiz-footer">
+        {!submitted ? (
+          <button 
+            className="btn-pill-primary" 
+            disabled={!selected}
+            onClick={() => {
+              setSubmitted(true);
+              if (selected === q.correct_answer) setScore(s => s + 1);
+            }}
+          >
+            Submit Answer <ArrowRight size={16} />
           </button>
         ) : (
-          <button className="pill-btn" onClick={handleNext}>
-            {currentIndex === questions.length - 1 ? 'See Results' : 'Next Question'}
+          <button 
+            className="btn-pill-primary"
+            onClick={() => {
+              setSelected(null);
+              setSubmitted(false);
+              setIdx(i => i + 1);
+            }}
+          >
+            {idx === questions.length - 1 ? 'See Results' : 'Next Question'} <ArrowRight size={16} />
           </button>
         )}
       </div>
     </div>
   );
 }
+
+// Re-using styles from globals.css where possible, adding specific ones here via helper classes or new CSS
+import { Brain } from 'lucide-react';
+

@@ -5,7 +5,7 @@ from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_MODEL_NAME = "gemini-3.1-flash-lite-preview"
+_MODEL_NAME = "gemini-3-flash-preview"
 
 def _configure_genai() -> None:
     settings = get_settings()

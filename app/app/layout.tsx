@@ -2,25 +2,23 @@ import './globals.css';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Next.js App',
-  description: 'A minimal Next.js app scaffolded in the app folder.',
+  title: 'Athex — Intelligent Learning Platform',
+  description: 'Transform any lecture or video into interactive notes, quizzes, and flashcards with AI.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Outfit:wght@100..900&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body suppressHydrationWarning>
-        <div className="app-wrapper">
-          {/* ── CINEMATIC BACKGROUND VIDEO ── */}
-          <video autoPlay loop muted playsInline className="background-video">
-            <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4" />
-          </video>
-          <div className="video-overlay"></div>
-          
-          <div className="app-container">
-            {children}
-          </div>
-        </div>
+        {children}
       </body>
     </html>
   );

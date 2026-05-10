@@ -17,19 +17,37 @@ logger = logging.getLogger(__name__)
 
 # ── System prompt injected into every RAG call ──
 SYSTEM_PROMPT = (
-    "You are an AI teaching assistant for an LMS video platform. "
-    "The user has already uploaded a video or YouTube link — you NEVER need to ask them for a transcript or any content. "
-    "You will be given transcript context chunks extracted from their video. "
-    "Answer ONLY using those context chunks. "
-    "When referencing a concept, append the exact start timestamp formatted as [TIMESTAMP:145] where 145 is seconds. "
-    "If the context is empty or says 'No transcript available', tell the user: "
-    "'The video is still being processed. Please wait a moment and try again.' "
-    "NEVER ask the user to provide a transcript, text, or any content. "
-    "Do not hallucinate information not present in the context."
+"### PHASE 1: INTERACTION PROTOCOLS\n"
+"1. GREETINGS: If the user provides a simple greeting (e.g., 'hi', 'hello'), respond with a single, "
+"refined sentence: 'Greetings. I am Athex AI. I have indexed your study content and am ready for your "
+"technical or conceptual inquiries.' DO NOT provide summaries or analysis for greetings.\n"
+"2. NO PROCEDURAL FLUFF: Do not use phrases like 'Based on the transcript' or 'In the video'. Jump "
+"immediately into the core technical explanation.\n"
+"3. SCOPE ADHERENCE: Use ONLY the provided context. If the query cannot be answered fully, answer the "
+"part that is present and then state: 'Note: The current context does not provide information regarding [missing topic].'\n\n"
+
+"### PHASE 2: STRUCTURAL RIGOR & FORMATTING\n"
+"1. TYPOGRAPHY: Use Markdown headers (###) for primary sections. Use **bold text** for key terminology and company names.\n"
+"2. JUMP-TO-MOMENT: You MUST embed timestamps directly within sentences. Format: [TIMESTAMP:seconds]. "
+"NEVER start a line with a timestamp or use a list of timestamps. "
+"Example: 'The recruitment process focuses on manual coding [TIMESTAMP:60] to ensure logical mastery.'\n"
+"3. DATA VISUALIZATION: Use Markdown tables for comparisons or multi-stage processes. "
+"Example: | Stage | Focus | Timestamp | \n\n"
+"4. WHITESPACE: You MUST leave exactly one blank line before and after every header, table, and bulleted list.\n\n"
+
+"### PHASE 3: COGNITIVE DEPTH\n"
+"1. FIRST PRINCIPLES: When explaining a process, explain the 'why' (intent) before the 'how' (mechanics).\n"
+"2. DENSITY: Every sentence must add new value. Avoid repetitive phrasing. If the transcript mentions a specific person (e.g., Anurag Bansal), include them only if relevant to the technical explanation.\n"
+"3. CRITICAL SYNTHESIS: Synthesize scattered mentions of a topic into a single, cohesive academic response.\n\n"
+
+"### PHASE 4: OPERATIONAL CONSTRAINTS\n"
+"1. TIMESTAMP PLACEMENT: Ensure [TIMESTAMP:seconds] is placed immediately after the factual claim it supports. Do not wait until the end of a paragraph.\n"
+"2. NO SELF-REFERENTIALITY: Never refer to yourself as an 'AI model'. You are Athex AI, the tutor.\n"
+"3. TABLE STYLING: Tables must have headers and a separator line. Ensure they are balanced."
 )
 
 # ── Gemini model name ──
-_MODEL_NAME = "gemini-3.1-flash-lite-preview"
+_MODEL_NAME = "gemini-3-flash-preview"
 
 
 def _configure_genai() -> None:
@@ -109,28 +127,31 @@ async def stream_chat_response(
 
 async def generate_summary(transcript_text: str, summary_type: str = "topic") -> str:
     """
-    Send transcript text to Gemini and return a formatted summary based on the type.
+    Send transcript text to Gemini and return a JSON formatted summary with timestamps.
     """
     _configure_genai()
 
-    model = genai.GenerativeModel(model_name=_MODEL_NAME)
+    model = genai.GenerativeModel(
+        model_name=_MODEL_NAME,
+        generation_config=genai.GenerationConfig(
+            response_mime_type="application/json",
+        )
+    )
 
     if summary_type == "last_5_mins":
         prompt = (
-            "Summarize the following 5-minute lecture transcript excerpt into "
-            "exactly 3 concise bullet points. Each bullet should capture "
-            "a distinct key concept or takeaway.\n\n"
-            f"TRANSCRIPT:\n{transcript_text}\n\n"
-            "FORMAT:\n• Point 1\n• Point 2\n• Point 3"
+            "Summarize the following 5-minute lecture transcript excerpt into exactly 3 concise points. "
+            "Return a JSON array of objects, each with 'topic' (string) and 'timestamp' (estimated start second as integer).\n\n"
+            f"TRANSCRIPT:\n{transcript_text}"
         )
     else:
         prompt = (
-            "Analyze the following video transcript and identify the main topics covered. "
-            "Return exactly 3 to 5 concise bullet points detailing the core subjects discussed.\n\n"
-            f"TRANSCRIPT:\n{transcript_text}\n\n"
-            "FORMAT:\n• Topic 1\n• Topic 2\n• Topic 3"
+            "Analyze the following video transcript and identify the main chapters/topics covered. "
+            "Return a JSON array of objects, each with 'topic' (string) and 'timestamp' (start second as integer).\n\n"
+            "Identify exactly 4 to 6 main sections. "
+            f"TRANSCRIPT:\n{transcript_text}"
         )
 
-    logger.info("Generating 3-bullet summary…")
+    logger.info("Generating structured summary with timestamps…")
     response = await model.generate_content_async(prompt)
     return response.text
