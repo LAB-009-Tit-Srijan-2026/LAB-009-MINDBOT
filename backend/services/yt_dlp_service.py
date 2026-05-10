@@ -14,8 +14,11 @@ async def download_youtube_audio(url: str) -> str:
     from core.config import get_settings
     settings = get_settings()
 
+    from services.proxy import get_random_proxy_url
+    proxy_url = get_random_proxy_url()
+
     ydl_opts = {
-        'proxy': settings.HTTPS_PROXY if settings.HTTPS_PROXY else None,
+        'proxy': proxy_url,
         'format': 'bestaudio/best',
         'outtmpl': os.path.join(tempfile.gettempdir(), '%(id)s.%(ext)s'),
         'quiet': True,

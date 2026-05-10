@@ -36,22 +36,24 @@ def _fetch_transcript_sync(video_id: str) -> List[dict]:
     from core.config import get_settings
     settings = get_settings()
     
-    proxies = None
-    if settings.HTTPS_PROXY:
-        proxies = {"https": settings.HTTPS_PROXY}
+    from services.proxy import get_proxy_dict
+    proxies = get_proxy_dict()
 
+    # Try to fetch using the module-level functions which are more robust
+    import youtube_transcript_api
+    
     # First, try to fetch English directly
     try:
-        result = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'en-US', 'en-GB'], proxies=proxies)
+        result = youtube_transcript_api.YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'en-US', 'en-GB'], proxies=proxies)
         snippets = list(result)
-        logger.info("[%s] Got %d English transcript snippets.", video_id, len(snippets))
+        logger.info("[%s] Got %d English transcript snippets using proxy.", video_id, len(snippets))
         return [{'text': s.text, 'start': s.start, 'duration': s.duration} for s in snippets]
     except Exception as e:
-        logger.info("[%s] No English transcript, trying other languages: %s", video_id, e)
+        logger.info("[%s] No English transcript or proxy blocked: %s", video_id, e)
 
     # List all available transcripts
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, proxies=proxies)
+        transcript_list = youtube_transcript_api.YouTubeTranscriptApi.list_transcripts(video_id, proxies=proxies)
     except Exception as e:
         raise RuntimeError(f"Could not list transcripts for {video_id}: {e}")
 
@@ -91,7 +93,7 @@ def _fetch_transcript_sync(video_id: str) -> List[dict]:
 
     # Absolute fallback: fetch whatever is available
     try:
-        result = YouTubeTranscriptApi.get_transcript(video_id, proxies=proxies)
+        result = youtube_transcript_api.YouTubeTranscriptApi.get_transcript(video_id, proxies=proxies)
         snippets = list(result)
         logger.info("[%s] Got %d snippets via fallback fetch.", video_id, len(snippets))
         return [{'text': s.text, 'start': s.start, 'duration': s.duration} for s in snippets]
