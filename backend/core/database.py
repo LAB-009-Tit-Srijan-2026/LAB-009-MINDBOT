@@ -52,7 +52,7 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 email TEXT UNIQUE NOT NULL,
-                hashed_password TEXT NOT NULL,
+                hashed_password TEXT,
                 is_verified BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )

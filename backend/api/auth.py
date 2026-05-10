@@ -282,10 +282,11 @@ async def google_callback(code: str, db=Depends(get_db)):
         user = await cursor.fetchone()
         if not user:
             user_id = str(uuid.uuid4())
-            # Google users are auto-verified
+            # Google users don't need a local password; use a dummy one to satisfy NOT NULL
+            dummy_pw = "google_oauth_user_no_password"
             await db.execute(
-                "INSERT INTO users (id, email, is_verified) VALUES (?, ?, ?)",
-                (user_id, email, True)
+                "INSERT INTO users (id, email, hashed_password, is_verified) VALUES (?, ?, ?, ?)",
+                (user_id, email, dummy_pw, True)
             )
             await db.commit()
         else:
