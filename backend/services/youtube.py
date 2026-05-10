@@ -1,76 +1,71 @@
 import asyncio
 import os
-import tempfile
 import logging
-import json
+import re
 from typing import Tuple, List
-import yt_dlp
 
 logger = logging.getLogger(__name__)
 
+def _extract_video_id(url: str) -> str:
+    """Extract YouTube video ID using regex to avoid network calls."""
+    patterns = [
+        r'(?:v=|/v/|youtu\.be/|/embed/|/shorts/)([A-Za-z0-9_-]{11})',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    # Fallback if regex fails, try a simple split
+    if "youtu.be/" in url:
+        return url.split("youtu.be/")[1].split("?")[0]
+    return "unknown_id"
+
 async def get_youtube_transcript(url: str) -> Tuple[List[dict], str]:
     """
-    Fetch YouTube transcript using yt-dlp which is more robust than youtube-transcript-api.
-    If captions are blocked, falls back to audio download + Deepgram.
+    Fetch YouTube transcript using audio-based transcription via Deepgram.
+    This is the most robust method for cloud servers.
     """
-    from services.proxy import get_random_proxy_url
-    proxy_url = get_random_proxy_url()
-
-    ydl_opts = {
-        'proxy': proxy_url,
-        'skip_download': True,
-        'write_auto_subs': True,
-        'writesubtitles': True,
-        'subtitleslangs': ['en.*'],
-        'quiet': True,
-        'no_warnings': True,
-        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-    }
-
-    def _extract_id(url: str):
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-            return info['id']
-
-    def _get_subs(url: str):
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            video_id = info['id']
-            
-            # Check if we got subtitles
-            subtitles = info.get('requested_subtitles')
-            if subtitles and 'en' in subtitles:
-                # yt-dlp returns URLs to subtitle files. 
-                # This is complex to parse on the fly.
-                pass
-            
-            return video_id
-
-    loop = asyncio.get_event_loop()
+    video_id = _extract_video_id(url)
+    
     try:
-        video_id = await loop.run_in_executor(None, _extract_id, url)
-        
-        # We'll use our fallback to Deepgram by default if we want high quality 
-        # because parsing yt-dlp VTT files is complex. 
-        # But wait, the user's IP is blocked for yt-dlp too.
-        
-        logger.info("[%s] Attempting audio-based transcription as primary method due to IP blocks.", video_id)
+        logger.info("[%s] Starting audio-based transcription pipeline for: %s", video_id, url)
         
         from services.yt_dlp_service import download_youtube_audio
         from services.transcription import transcribe_audio
         
+        # 1. Download audio (using rotating proxies and mobile user-agent)
         audio_path = await download_youtube_audio(url)
-        with open(audio_path, "rb") as f:
-            audio_bytes = f.read()
         
-        transcript_data = await transcribe_audio(audio_bytes, "audio/wav")
-        utterances = transcript_data.get("results", {}).get("utterances", [])
-        
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
+        try:
+            # 2. Transcribe with Deepgram
+            with open(audio_path, "rb") as f:
+                audio_bytes = f.read()
             
-        return utterances, video_id
+            transcript_data = await transcribe_audio(audio_bytes, "audio/wav")
+            utterances = transcript_data.get("results", {}).get("utterances", [])
+            
+            if not utterances:
+                # Some deepgram versions return results in a different structure
+                # Check for alternatives
+                results = transcript_data.get("results", {})
+                channels = results.get("channels", [])
+                if channels:
+                    alternatives = channels[0].get("alternatives", [])
+                    if alternatives:
+                        utterances = alternatives[0].get("utterances", [])
+            
+            logger.info("[%s] Successfully transcribed %d utterances via Deepgram.", video_id, len(utterances))
+            return utterances, video_id
+            
+        finally:
+            # 3. Always cleanup
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+                logger.info("[%s] Cleaned up temporary audio file.", video_id)
 
     except Exception as e:
-        logger.error("YouTube ingestion failed: %s", e)
+        logger.error("[%s] YouTube ingestion failed: %s", video_id, e)
+        # Provide a more user-friendly error message for bot detection
+        if "confirm you're not a bot" in str(e):
+             raise RuntimeError("YouTube is blocking our server. Please try again in a few minutes or upload the video file directly.")
         raise RuntimeError(f"Could not retrieve transcript via any method. Error: {e}")
